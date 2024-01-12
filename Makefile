@@ -26,7 +26,7 @@ $(OBJDIR)/%.c.o: %.c
 	$(COMPILE.c) -c $< -o $@
 
 SOURCES += \
-	main.c 
+	src/main.c
 
 OBJS = $(SOURCES:%=$(OBJDIR)/%.o)
 DEPS = $(OBJS:%=%.d)
