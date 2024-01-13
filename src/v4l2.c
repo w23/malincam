@@ -230,11 +230,13 @@ void devV4L2Close(struct DeviceV4L2* dev) {
 	if (!dev)
 		return;
 
+	// TODO free buffers
+
 	close(dev->fd);
 	free(dev);
 }
 
-int devV4L2Prepare(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts) {
+int devV4L2Start(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts) {
 	if (0 != v4l2_set_format(dev, opts->buffer_type, opts->width, opts->height)) {
 		return 1;
 	}
@@ -243,12 +245,57 @@ int devV4L2Prepare(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts) {
 		return 1;
 	}
 
+	// Enqueue buffers for capture
+	for (int i = 0; i < dev->buffers_count; ++i) {
+		struct v4l2_buffer buf = {
+			.type = opts->buffer_type,
+			.memory = opts->memory_type,
+			.index = i,
+		};
+
+		if (0 != ioctl(dev->fd, VIDIOC_QBUF, &buf)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_QBUF, %i): %d, %s",
+				dev->fd, i, errno, strerror(errno));
+			return -1;
+		}
+	}
+
+	if (0 != ioctl(dev->fd, VIDIOC_STREAMON, &opts->buffer_type)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_STREAMON, %s): %d, %s",
+			dev->fd, v4l2BufTypeName(opts->buffer_type), errno, strerror(errno));
+		return 1;
+	}
+	
 	return 0;
 }
 
-int devV4L2Start(struct DeviceV4L2 *dev) {
-	(void)(dev);
-	return 1;
+//void devV4L2Stop(struct DeviceV4L2 *dev) {}
+
+const Buffer *devV4L2PullBuffer(struct DeviceV4L2 *dev) {
+	// TODO pick the right stream
+	struct v4l2_buffer buf = {
+		.type = dev->buffers[0].buffer.type,
+		.memory = dev->buffers[0].buffer.memory,
+	};
+
+	if (0 != ioctl(dev->fd, VIDIOC_DQBUF, &buf)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_DQBUF): %d, %s",
+			dev->fd, errno, strerror(errno));
+		return NULL;
+	}
+
+	Buffer *const ret = dev->buffers + buf.index;
+	// TODO check differences
+	ret->buffer = buf;
+	return ret;
 }
 
-//void devV4L2Stop(struct DeviceV4L2 *dev) {}
+int devV4L2PushBuffer(struct DeviceV4L2 *dev, const Buffer *buf) {
+	if (0 != ioctl(dev->fd, VIDIOC_QBUF, &buf->buffer)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
+			dev->fd, errno, strerror(errno));
+		return errno;
+	}
+
+	return 0;
+}

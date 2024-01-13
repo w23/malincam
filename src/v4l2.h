@@ -36,14 +36,18 @@ typedef struct V4L2PrepareOpts {
 
 	uint32_t width, height;
 
-	void *userptr;
-	got_buffer_func *buffer_func;
+	//void *userptr;
+	//got_buffer_func *buffer_func;
 
 } V4L2PrepareOpts;
 
-int devV4L2Prepare(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts);
-int devV4L2Start(struct DeviceV4L2 *dev);
+int devV4L2Start(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts);
 void devV4L2Stop(struct DeviceV4L2 *dev);
+
+// TODO Stream interface?
+
+int devV4L2PushBuffer(struct DeviceV4L2 *dev, const Buffer *buf);
+const Buffer *devV4L2PullBuffer(struct DeviceV4L2 *dev);
 
 //void devV4L2EnqueueBuffer(struct DeviceV4L2 *dev); // ...
 
