@@ -28,6 +28,7 @@ $(OBJDIR)/%.c.o: %.c
 SOURCES += \
 	src/main.c \
 	src/v4l2.c \
+	src/v4l2-print.c \
 
 OBJS = $(SOURCES:%=$(OBJDIR)/%.o)
 DEPS = $(OBJS:%=%.d)
