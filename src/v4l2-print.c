@@ -183,6 +183,7 @@ void v4l2PrintFormat(const struct v4l2_format* fmt) {
 	FIELDS(X)
 #undef X
 #undef _
+#undef FIELDS
 
 	for (int i = 0; i < fmt->fmt.pix_mp.num_planes; ++i) {
 		LOGI("fmt.pix_mp.plane_fmt[%d].sizeimage = %d", i, fmt->fmt.pix_mp.plane_fmt[i].sizeimage);
@@ -192,6 +193,54 @@ void v4l2PrintFormat(const struct v4l2_format* fmt) {
 
 void v4l2PrintRequestBuffers(const struct v4l2_requestbuffers* req) {
 	LOGI("req.count = %d", req->count);
+	LOGI("req.capabilities = %08x:", req->capabilities);
 	v4l2PrintBufferCapabilityBits(req->capabilities);
 	LOGI("req.flags = %08x", req->flags);
+}
+
+const char *v4l2MemoryTypeName(enum v4l2_memory type) {
+	switch (type) {
+		case V4L2_MEMORY_MMAP: return "V4L2_MEMORY_MMAP";
+		case V4L2_MEMORY_USERPTR: return "V4L2_MEMORY_USERPTR";
+		case V4L2_MEMORY_OVERLAY: return "V4L2_MEMORY_OVERLAY";
+		case V4L2_MEMORY_DMABUF: return "V4L2_MEMORY_DMABUF";
+		default: return "UNKNOWN";
+	}
+}
+
+void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
+#define _(v) (v)
+#define FIELDS(X) \
+	X(index, "%d", _) \
+	X(type, "%s", v4l2BufTypeName) \
+	X(bytesused, "%d", _) \
+	X(flags, "%08x", _) \
+	X(field, "%08x", _) \
+	X(sequence, "%d", _) \
+	X(memory, "%s", v4l2MemoryTypeName) \
+	X(length, "%d", _) \
+
+#define X(name, ffmt, func) \
+	LOGI("  buf." #name " = " ffmt, func(buf->name));
+	FIELDS(X)
+#undef X
+#undef FIELDS
+#undef _
+
+	switch (buf->memory) {
+		case V4L2_MEMORY_MMAP:
+			LOGI("  buf.m.offset = %d", buf->m.offset);
+			LOGI("  buf.m.userptr = %08lx", buf->m.userptr);
+			LOGI("  buf.m.fd = %d", buf->m.fd);
+			//struct v4l2_plane *planes; // TODO
+			break;
+		case V4L2_MEMORY_USERPTR:
+		case V4L2_MEMORY_DMABUF:
+		case V4L2_MEMORY_OVERLAY:
+			break;
+	}
+
+	// TODO
+	//struct timeval		timestamp;
+	//struct v4l2_timecode	timecode;
 }

@@ -2,6 +2,8 @@
 #include <errno.h>
 #include <string.h> // strerror
 
+#include <sys/mman.h> // mmap
+
 // open
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -87,65 +89,95 @@ static int v4l2_enum_formats(int fd, uint32_t type) {
 	}
 }
 
-static int v4l2_set_format(int fd, uint32_t type, int w, int h) {
-#if 0
-	ioctl(40, VIDIOC_G_FMT, {type=V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, fmt.pix_mp={width=32,   height=32,   pixelformat=v4l2_fourcc('J', 'P', 'E', 'G') /* V4L2_PIX_FMT_JPEG */, field=V4L2_FIELD_NONE, colorspace=V4L2_COLORSPACE_JPEG, plane_fmt=[{sizeimage=4194304, bytesperline=0}], num_planes=1}}) = 0
-	ioctl(40, VIDIOC_S_FMT, {type=V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, fmt.pix_mp={width=1920, height=1056, pixelformat=v4l2_fourcc('J', 'P', 'E', 'G') /* V4L2_PIX_FMT_JPEG */, field=V4L2_FIELD_ANY,  colorspace=V4L2_COLORSPACE_JPEG, plane_fmt=[{sizeimage=0, bytesperline=0}],       num_planes=1}} =>
-	                                                                 {fmt.pix_mp={width=1920, height=1056, pixelformat=v4l2_fourcc('J', 'P', 'E', 'G') /* V4L2_PIX_FMT_JPEG */, field=V4L2_FIELD_NONE, colorspace=V4L2_COLORSPACE_JPEG, plane_fmt=[{sizeimage=4194304, bytesperline=0}], num_planes=1}}) = 0
-#endif
+static int v4l2_set_format(DeviceV4L2* dev, uint32_t type, int w, int h) {
 	int status = 0;
 	LOGI("Setting format for type=%s(%d)", v4l2BufTypeName(type), type);
 
-	struct v4l2_format fmt;
-	fmt.type = type;
-	if (0 != ioctl(fd, VIDIOC_G_FMT, &fmt)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_G_FMT): %d, %s", fd, errno, strerror(errno));
+	dev->fmt.type = type;
+	if (0 != ioctl(dev->fd, VIDIOC_G_FMT, &dev->fmt)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_G_FMT): %d, %s", dev->fd, errno, strerror(errno));
 		status = 1;
 		goto tail;
 	}
 
-	v4l2PrintFormat(&fmt);
+	v4l2PrintFormat(&dev->fmt);
 
-	fmt.fmt.pix_mp.width = w;
-	fmt.fmt.pix_mp.height = h;
+	if (w == 0 || h == 0) {
+		return 0;
+	}
 
-	if (0 != ioctl(fd, VIDIOC_S_FMT, &fmt)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT): %d, %s", fd, errno, strerror(errno));
+	LOGI("Seting format to %dx%d", w, h);
+	dev->fmt.fmt.pix_mp.width = w;
+	dev->fmt.fmt.pix_mp.height = h;
+
+	if (0 != ioctl(dev->fd, VIDIOC_S_FMT, &dev->fmt)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT): %d, %s", dev->fd, errno, strerror(errno));
 		status = 1;
 		goto tail;
 	}
-
-	LOGI("Set format to %dx%d", w, h);
 
 tail:
 	return status;
 }
 
-static int v4l2_requestbuffers(int fd, uint32_t type) {
-#if 0
-	ioctl(40, VIDIOC_REQBUFS, {type=V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, memory=V4L2_MEMORY_MMAP, count=3 => 3}) = 0
-	write(2, "device/buffer_list.c: SNAPSHOT:c"..., 114) = 114
-	ioctl(40, VIDIOC_QUERYBUF_TIME32, 0x7ea46f70) = 0
-	mmap2(NULL, 4194304, PROT_READ|PROT_WRITE, MAP_SHARED, 40, 0x40000000) = 0x662a1000
-	ioctl(40, VIDIOC_EXPBUF, 0x7ea46ef4)    = 0
-	ioctl(40, VIDIOC_QUERYBUF_TIME32, 0x7ea46f70) = 0
-	mmap2(NULL, 4194304, PROT_READ|PROT_WRITE, MAP_SHARED, 40, 0x40400000) = 0x65ea1000
-	ioctl(40, VIDIOC_EXPBUF, 0x7ea46ef4)    = 0
-	ioctl(40, VIDIOC_QUERYBUF_TIME32, 0x7ea46f70) = 0
-	mmap2(NULL, 4194304, PROT_READ|PROT_WRITE, MAP_SHARED, 40, 0x40800000) = 0x65aa1000
-	ioctl(40, VIDIOC_EXPBUF, 0x7ea46ef4)    = 0
-#endif
+static int v4l2_init_buffers_mmap(DeviceV4L2 *dev, const struct v4l2_requestbuffers* req) {
+	dev->buffers = calloc(req->count, sizeof(*dev->buffers));
+	dev->buffers_count = req->count;
 
+	for (int i = 0; i < dev->buffers_count; ++i) {
+		Buffer *const buf = dev->buffers + i;
+		buf->buffer = (struct v4l2_buffer){
+			.type = req->type,
+			.memory = req->memory,
+			.index = i,
+		};
+
+		if (0 != ioctl(dev->fd, VIDIOC_QUERYBUF, &buf->buffer)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", dev->fd, i, errno, strerror(errno));
+			goto fail;
+		}
+
+		LOGI("Queried buffer %d:", i);
+		v4l2PrintBuffer(&buf->buffer);
+
+		buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, dev->fd, buf->buffer.m.offset);
+		if (buf->v.mmap.ptr == MAP_FAILED) {
+			LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", dev->fd, i, errno, strerror(errno));
+			goto fail;
+		}
+	}
+
+	return 0;
+
+fail:
+	// TODO remove ones we've already queried?
+	free(dev->buffers);
+	dev->buffers = NULL;
+	dev->buffers_count = 0;
+	return 1;
+}
+
+static int v4l2_requestbuffers(DeviceV4L2* dev, uint32_t type, uint32_t count, uint32_t memory_type) {
 	struct v4l2_requestbuffers req = {0};
 	req.type = type;
-	req.count = 2;
-	req.memory = V4L2_MEMORY_MMAP;
-	if (0 != ioctl(fd, VIDIOC_REQBUFS, &req)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", fd, errno, strerror(errno));
+	req.count = count;
+	req.memory = memory_type;
+	if (0 != ioctl(dev->fd, VIDIOC_REQBUFS, &req)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", dev->fd, errno, strerror(errno));
 		return -1;
 	}
 
 	v4l2PrintRequestBuffers(&req);
+
+	switch (req.memory) {
+		case V4L2_MEMORY_MMAP:
+			return v4l2_init_buffers_mmap(dev, &req);
+			break;
+		default:
+			LOGE("%s: Unimplemented memory type %s (%d)", __func__, v4l2MemoryTypeName(req.memory), (int)req.memory);
+			return 1;
+			break;
+	}
 
 	return 0;
 }
@@ -159,7 +191,7 @@ struct DeviceV4L2* devV4L2Open(const char *devname) {
 		goto fail;
 	}
 
-	LOGI("Opened \"%s\" = %d", devname, dev.fd);
+	LOGI("Opened \"%s\" => %d", devname, dev.fd);
 
 	if (0 != v4l2QueryCapability(&dev)) {
 		goto fail;
@@ -167,16 +199,18 @@ struct DeviceV4L2* devV4L2Open(const char *devname) {
 
 	v4l2_enum_input(dev.fd);
 	v4l2_enum_controls_ext(dev.fd);
+
+	// TODO if capture
+	// TODO how to enumerate?
 	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+
+	// TODO if output
 	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_OUTPUT);
 	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
 
 	// TODO VIDIOC_ENUM_FRAMESIZES
 	// TODO VIDIOC_ENUM_FRAMEINTERVALS
-
-	v4l2_set_format(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, 1280, 720);
-	v4l2_requestbuffers(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
 	//v4l2_set_format(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, 1280, 720);
 	//v4l2_requestbuffers(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
@@ -188,6 +222,7 @@ struct DeviceV4L2* devV4L2Open(const char *devname) {
 fail:
 	if (dev.fd > 0)
 		close(dev.fd);
+
 	return NULL;
 }
 
@@ -198,3 +233,22 @@ void devV4L2Close(struct DeviceV4L2* dev) {
 	close(dev->fd);
 	free(dev);
 }
+
+int devV4L2Prepare(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts) {
+	if (0 != v4l2_set_format(dev, opts->buffer_type, opts->width, opts->height)) {
+		return 1;
+	}
+
+	if (0 != v4l2_requestbuffers(dev, opts->buffer_type, opts->buffers_count, opts->memory_type)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+int devV4L2Start(struct DeviceV4L2 *dev) {
+	(void)(dev);
+	return 1;
+}
+
+//void devV4L2Stop(struct DeviceV4L2 *dev) {}
