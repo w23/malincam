@@ -13,11 +13,22 @@ typedef struct Buffer {
 	} v;
 } Buffer;
 
+typedef struct Endpoint {
+	uint32_t type;
+} Endpoint;
+
+#define MAX_ENDPOINTS 4
+
 typedef struct DeviceV4L2 {
 	int fd;
 	char *name;
 
 	struct v4l2_capability caps;
+	uint32_t this_device_caps;
+
+	Endpoint endpoints[MAX_ENDPOINTS];
+	int endpoints_count;
+
 	struct v4l2_format fmt;
 
 	struct Buffer *buffers;

@@ -18,13 +18,68 @@
 #include "common.h"
 #include "v4l2.h"
 
+static int v4l2EnumFormatsForBufferType(int fd, uint32_t type) {
+	LOGI("Enumerating formats for type=%s(%d)", v4l2BufTypeName(type), type);
+	for (int i = 0;; ++i) {
+		struct v4l2_fmtdesc fmt;
+		fmt.index = i;
+		fmt.mbus_code = 0;
+		fmt.type = type;
+		if (0 != ioctl(fd, VIDIOC_ENUM_FMT, &fmt)) {
+			if (EINVAL == errno) {
+				LOGI("Device has %d formats", i);
+				return 0;
+			}
+
+			if (ENOTTY == errno) {
+				LOGI("Device has no formats");
+				return 0;
+			}
+
+			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", fd, errno, strerror(errno));
+			return 1;
+		}
+
+		v4l2PrintFormatDesc(&fmt);
+	}
+}
+
+static int v4l2AddEndpoint(DeviceV4L2 *dev, uint32_t buffer_type) {
+	return v4l2EnumFormatsForBufferType(dev->fd, buffer_type);
+}
+
 static int v4l2QueryCapability(DeviceV4L2 *dev) {
 	if (0 != ioctl(dev->fd, VIDIOC_QUERYCAP, &dev->caps)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QUERYCAP): %d, %s", dev->fd, errno, strerror(errno));
-		return 1;
+		return errno;
 	}
 
 	v4l2PrintCapability(&dev->caps);
+
+	dev->this_device_caps = dev->caps.capabilities & V4L2_CAP_DEVICE_CAPS
+		? dev->caps.device_caps : dev->caps.capabilities;
+
+
+	if ((V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
+		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_CAPTURE))
+			return errno;
+	}
+
+	if ((V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
+		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
+			return errno;
+	}
+
+	if ((V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
+		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_OUTPUT))
+			return errno;
+	}
+
+	if ((V4L2_CAP_VIDEO_OUTPUT_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
+		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+			return errno;
+	}
+
 	return 0;
 }
 
@@ -61,32 +116,6 @@ static int v4l2_enum_controls_ext(int fd) {
 	}
 
 	return 0;
-}
-
-static int v4l2_enum_formats(int fd, uint32_t type) {
-	LOGI("Enumerating formats for type=%s(%d)", v4l2BufTypeName(type), type);
-	for (int i = 0;; ++i) {
-		struct v4l2_fmtdesc fmt;
-		fmt.index = i;
-		fmt.mbus_code = 0;
-		fmt.type = type;
-		if (0 != ioctl(fd, VIDIOC_ENUM_FMT, &fmt)) {
-			if (EINVAL == errno) {
-				LOGI("Device has %d formats", i);
-				return 0;
-			}
-
-			if (ENOTTY == errno) {
-				LOGI("Device has no formats");
-				return 0;
-			}
-
-			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", fd, errno, strerror(errno));
-			return 1;
-		}
-
-		v4l2PrintFormatDesc(&fmt);
-	}
 }
 
 static int v4l2_set_format(DeviceV4L2* dev, uint32_t type, int w, int h) {
@@ -202,12 +231,12 @@ struct DeviceV4L2* devV4L2Open(const char *devname) {
 
 	// TODO if capture
 	// TODO how to enumerate?
-	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	//v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+	//v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 
 	// TODO if output
-	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_OUTPUT);
-	v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	//v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+	//v4l2_enum_formats(dev.fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
 
 	// TODO VIDIOC_ENUM_FRAMESIZES
 	// TODO VIDIOC_ENUM_FRAMEINTERVALS
