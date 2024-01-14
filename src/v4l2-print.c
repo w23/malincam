@@ -416,6 +416,7 @@ void v4l2PrintFormatDesc(const struct v4l2_fmtdesc* fmt) {
 	v4l2PrintFormatFlags(fmt->flags);
 	LOGI("  fmt.description = %s", fmt->description);
 	LOGI("  fmt.pixelformat = %s (%08x)", v4l2PixFmtName(fmt->pixelformat), fmt->pixelformat);
+	LOGI("  fmt.mbus_code = %d", fmt->mbus_code);
 }
 
 void v4l2PrintFormat(const struct v4l2_format* fmt) {

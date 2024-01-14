@@ -18,34 +18,47 @@
 #include "common.h"
 #include "v4l2.h"
 
-static int v4l2EnumFormatsForBufferType(int fd, uint32_t type) {
+static int v4l2EnumFormatsForBufferType(Endpoint *point, int fd, uint32_t type, int mbus_code) {
+	arrayInit(&point->formats, struct v4l2_fmtdesc);
 	LOGI("Enumerating formats for type=%s(%d)", v4l2BufTypeName(type), type);
 	for (int i = 0;; ++i) {
 		struct v4l2_fmtdesc fmt;
 		fmt.index = i;
-		fmt.mbus_code = 0;
 		fmt.type = type;
+		fmt.mbus_code = mbus_code;
 		if (0 != ioctl(fd, VIDIOC_ENUM_FMT, &fmt)) {
 			if (EINVAL == errno) {
-				LOGI("Device has %d formats", i);
+				LOGI("Endpoint has %d formats", i);
 				return 0;
 			}
 
 			if (ENOTTY == errno) {
-				LOGI("Device has no formats");
+				LOGI("Endpoint has no formats");
 				return 0;
 			}
 
 			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", fd, errno, strerror(errno));
-			return 1;
+			return errno;
 		}
 
 		v4l2PrintFormatDesc(&fmt);
+		arrayAppend(&point->formats, &fmt);
 	}
 }
 
 static int v4l2AddEndpoint(DeviceV4L2 *dev, uint32_t buffer_type) {
-	return v4l2EnumFormatsForBufferType(dev->fd, buffer_type);
+	Endpoint point;
+	point.type = buffer_type;
+
+	if (0 != v4l2EnumFormatsForBufferType(&point, dev->fd, buffer_type, 0))
+		goto fail;
+
+	arrayAppend(&dev->endpoints, &point);
+	return 0;
+
+fail:
+	arrayDestroy(&point.formats);
+	return -1;
 }
 
 static int v4l2QueryCapability(DeviceV4L2 *dev) {
@@ -59,6 +72,7 @@ static int v4l2QueryCapability(DeviceV4L2 *dev) {
 	dev->this_device_caps = dev->caps.capabilities & V4L2_CAP_DEVICE_CAPS
 		? dev->caps.device_caps : dev->caps.capabilities;
 
+	arrayInit(&dev->endpoints, Endpoint);
 
 	if ((V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
 		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_CAPTURE))
@@ -255,11 +269,19 @@ fail:
 	return NULL;
 }
 
+static void endpointDestroy(Endpoint *ep) {
+	arrayDestroy(&ep->formats);
+}
+
 void devV4L2Close(struct DeviceV4L2* dev) {
 	if (!dev)
 		return;
 
 	// TODO free buffers
+
+	for (int i = 0; i < dev->endpoints.size; ++i)
+		endpointDestroy(arrayAt(&dev->endpoints, Endpoint, i));
+	arrayDestroy(&dev->endpoints);
 
 	close(dev->fd);
 	free(dev);

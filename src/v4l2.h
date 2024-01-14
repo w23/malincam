@@ -4,6 +4,8 @@
 
 #include <stdint.h> // uint32_t et al.
 
+#include "array.h"
+
 typedef struct Buffer {
 	struct v4l2_buffer buffer;
 	union {
@@ -15,9 +17,8 @@ typedef struct Buffer {
 
 typedef struct Endpoint {
 	uint32_t type;
+	Array /*T(struct v4l2_fmtdesc)*/ formats;
 } Endpoint;
-
-#define MAX_ENDPOINTS 4
 
 typedef struct DeviceV4L2 {
 	int fd;
@@ -26,8 +27,7 @@ typedef struct DeviceV4L2 {
 	struct v4l2_capability caps;
 	uint32_t this_device_caps;
 
-	Endpoint endpoints[MAX_ENDPOINTS];
-	int endpoints_count;
+	Array endpoints;
 
 	struct v4l2_format fmt;
 
@@ -59,8 +59,6 @@ void devV4L2Stop(struct DeviceV4L2 *dev);
 
 int devV4L2PushBuffer(struct DeviceV4L2 *dev, const Buffer *buf);
 const Buffer *devV4L2PullBuffer(struct DeviceV4L2 *dev);
-
-//void devV4L2EnqueueBuffer(struct DeviceV4L2 *dev); // ...
 
 void v4l2PrintCapabilityBits(uint32_t caps);
 void v4l2PrintBufferCapabilityBits(uint32_t caps);

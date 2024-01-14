@@ -1,3 +1,6 @@
+#define ARRAY_H_IMPLEMENT
+#include "array.h"
+
 #include "common.h"
 #include "v4l2.h"
 
