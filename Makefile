@@ -6,10 +6,15 @@ MAKEFLAGS += -r --no-print-directory
 BUILDDIR ?= build
 CC ?= cc
 CFLAGS += -std=gnu99 -Wall -Wextra -Werror -pedantic
+LDFLAGS +=
 
 ifeq ($(DEBUG), 1)
 	CONFIG = debug
 	CFLAGS += -O0 -ggdb3
+else ($(ASAN), 1)
+	CONFIG = asan
+	CFLAGS += -O0 -ggdb3 -fsanitize=address
+	LDFLAGS += -fsanitize=address
 else
 	CONFIG = release
 	CFLAGS += -O3
@@ -35,7 +40,7 @@ DEPS = $(OBJS:%=%.d)
 -include $(DEPS)
 
 $(OBJDIR)/malincam: $(OBJS)
-	$(CC) $^ -o $@
+	$(CC) $(LDFLAGS) $^ -o $@
 
 clean:
 	rm -rf $(BUILDDIR)
