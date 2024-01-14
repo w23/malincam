@@ -11,7 +11,7 @@ LDFLAGS +=
 ifeq ($(DEBUG), 1)
 	CONFIG = debug
 	CFLAGS += -O0 -ggdb3
-else ($(ASAN), 1)
+else ifeq ($(ASAN), 1)
 	CONFIG = asan
 	CFLAGS += -O0 -ggdb3 -fsanitize=address
 	LDFLAGS += -fsanitize=address
