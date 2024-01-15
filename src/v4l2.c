@@ -44,6 +44,24 @@ static int v4l2EnumFormatsForBufferType(Endpoint *point, int fd, uint32_t type, 
 		//v4l2PrintFormatDesc(&fmt);
 		LOGI("  fmt[%d] = {%s, %s}", i, v4l2PixFmtName(fmt.pixelformat), fmt.description);
 		v4l2PrintFormatFlags(fmt.flags);
+
+		// Enumerate possible sizes
+		for (int i = 0;; ++i) {
+			struct v4l2_frmsizeenum fse = { .index = i, .pixel_format = fmt.pixelformat };
+			if (0 != ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &fse)) {
+				if (EINVAL == errno) {
+					LOGI("  Format has %d framesizes", i);
+					break;
+				}
+			}
+
+			v4l2PrintFrmSizeEnum(&fse);
+
+			// Only discrete supports index > 0
+			if (fse.type != V4L2_FRMSIZE_TYPE_DISCRETE)
+				break;
+		}
+
 		arrayAppend(&point->formats, &fmt);
 	}
 }

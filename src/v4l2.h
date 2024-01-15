@@ -75,3 +75,4 @@ const char *v4l2MemoryTypeName(enum v4l2_memory type);
 void v4l2PrintBuffer(const struct v4l2_buffer *buf);
 void v4l2PrintFormatFlags(uint32_t flags);
 const char *v4l2PixFmtName(uint32_t fmt);
+void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse);
