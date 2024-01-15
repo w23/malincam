@@ -41,7 +41,9 @@ static int v4l2EnumFormatsForBufferType(Endpoint *point, int fd, uint32_t type, 
 			return errno;
 		}
 
-		v4l2PrintFormatDesc(&fmt);
+		//v4l2PrintFormatDesc(&fmt);
+		LOGI("  fmt[%d] = {%s, %s}", i, v4l2PixFmtName(fmt.pixelformat), fmt.description);
+		v4l2PrintFormatFlags(fmt.flags);
 		arrayAppend(&point->formats, &fmt);
 	}
 }
@@ -52,6 +54,22 @@ static int v4l2AddEndpoint(DeviceV4L2 *dev, uint32_t buffer_type) {
 
 	if (0 != v4l2EnumFormatsForBufferType(&point, dev->fd, buffer_type, 0))
 		goto fail;
+
+	// Read supported memory types
+	{
+		struct v4l2_requestbuffers req = {0};
+		req.type = buffer_type;
+		req.count = 0;
+		req.memory = V4L2_MEMORY_MMAP;
+		if (0 != ioctl(dev->fd, VIDIOC_REQBUFS, &req)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", dev->fd, errno, strerror(errno));
+			goto fail;
+		}
+
+		LOGI("Endpoint capabilities:");
+		v4l2PrintBufferCapabilityBits(req.capabilities);
+		point.buffer_capabilities = req.capabilities;
+	}
 
 	arrayAppend(&dev->endpoints, &point);
 	return 0;

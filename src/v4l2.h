@@ -17,6 +17,7 @@ typedef struct Buffer {
 
 typedef struct Endpoint {
 	uint32_t type;
+	uint32_t buffer_capabilities;
 	Array /*T(struct v4l2_fmtdesc)*/ formats;
 } Endpoint;
 
@@ -71,3 +72,5 @@ void v4l2PrintFormat(const struct v4l2_format* fmt);
 void v4l2PrintRequestBuffers(const struct v4l2_requestbuffers* req);
 const char *v4l2MemoryTypeName(enum v4l2_memory type);
 void v4l2PrintBuffer(const struct v4l2_buffer *buf);
+void v4l2PrintFormatFlags(uint32_t flags);
+const char *v4l2PixFmtName(uint32_t fmt);
