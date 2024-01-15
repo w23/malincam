@@ -88,28 +88,27 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
+	int status = 0;
 	V4L2PrepareOpts opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_MMAP,
-		.buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE,
 		.width = 0, // Preserve
 		.height = 0,
 		//.userptr = NULL,
 		//.buffer_func = NULL,
 	};
 
-	if (0 != devV4L2Start(dev, &opts)) {
+	if (0 != devV4L2EndpointStart(dev, 0, &opts)) {
 		LOGE("Unable to start");
-		goto fail;
+		status = 1;
+		goto exit;
 	}
 
 	pullFrames(dev, 60);
 
-	//devV4L2Stop(dev);
-	devV4L2Close(dev);
-	return 0;
+	devV4L2EndpointStop(dev, 0);
 
-fail:
+exit:
 	devV4L2Close(dev);
-	return 1;
+	return status;
 }

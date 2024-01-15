@@ -571,9 +571,9 @@ void v4l2PrintFrmSizeStepwise(const struct v4l2_frmsize_stepwise *fss) {
 
 void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse) {
 	LOGI("    fse.type = %s", v4l2FrmSizeTypeName(fse->type));
-	LOGI("    fse.index = %d", fse->index);
 	switch (fse->type) {
 		case V4L2_FRMSIZE_TYPE_DISCRETE:
+			LOGI("    fse.index = %d", fse->index);
 			v4l2PrintFrmSizeDiscrete(&fse->discrete);
 			break;
 		case V4L2_FRMSIZE_TYPE_CONTINUOUS:

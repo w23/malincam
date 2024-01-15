@@ -15,11 +15,23 @@ typedef struct Buffer {
 	} v;
 } Buffer;
 
+typedef enum {
+	ENDPOINT_STATE_IDLE = 0,
+	ENDPOINT_STATE_STREAMING,
+} EndpointState;
+
 typedef struct Endpoint {
 	uint32_t type;
 	uint32_t buffer_capabilities;
+
+	EndpointState state;
+
 	struct v4l2_format format;
+
 	Array /*T(struct v4l2_fmtdesc)*/ formats;
+
+	struct Buffer *buffers;
+	int buffers_count;
 } Endpoint;
 
 typedef struct DeviceV4L2 {
@@ -30,11 +42,6 @@ typedef struct DeviceV4L2 {
 	uint32_t this_device_caps;
 
 	Array endpoints;
-
-	struct v4l2_format fmt;
-
-	struct Buffer *buffers;
-	int buffers_count;
 } DeviceV4L2;
 
 struct DeviceV4L2* devV4L2Open(const char *devname);
@@ -43,10 +50,11 @@ void devV4L2Close(struct DeviceV4L2* dev);
 typedef int (got_buffer_func)(void *userptr, struct v4l2_buffer *buf);
 
 typedef struct V4L2PrepareOpts {
-	uint32_t buffer_type;
-	uint32_t buffers_count;
 	uint32_t memory_type;
 
+	uint32_t buffers_count;
+
+	uint32_t pixelformat;
 	uint32_t width, height;
 
 	//void *userptr;
@@ -54,13 +62,11 @@ typedef struct V4L2PrepareOpts {
 
 } V4L2PrepareOpts;
 
-int devV4L2Start(struct DeviceV4L2 *dev, const V4L2PrepareOpts *opts);
-void devV4L2Stop(struct DeviceV4L2 *dev);
+int devV4L2EndpointStart(struct DeviceV4L2 *dev, int endpoint_index, const V4L2PrepareOpts *opts);
+int devV4L2EndpointStop(struct DeviceV4L2 *dev, int endpoint_index);
 
-// TODO Stream interface?
-
-int devV4L2PushBuffer(struct DeviceV4L2 *dev, const Buffer *buf);
 const Buffer *devV4L2PullBuffer(struct DeviceV4L2 *dev);
+int devV4L2PushBuffer(struct DeviceV4L2 *dev, const Buffer *buf);
 
 void v4l2PrintCapabilityBits(uint32_t caps);
 void v4l2PrintBufferCapabilityBits(uint32_t caps);
