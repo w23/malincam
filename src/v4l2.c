@@ -104,8 +104,9 @@ static int v4l2AddEndpoint(DeviceV4L2 *dev, uint32_t buffer_type) {
 	// Read current format
 	if (0 != endpointGetFormat(&point, dev->fd)) {
 			goto fail;
-		v4l2PrintFormat(&point.format);
 	}
+	LOGI("Current format:");
+	v4l2PrintFormat(&point.format);
 
 	arrayAppend(&dev->endpoints, &point);
 	return 0;
