@@ -409,6 +409,26 @@ const char *v4l2PixFmtName(uint32_t fmt) {
 	}
 }
 
+const char *v4l2ColorspaceName(enum v4l2_colorspace colorspace) {
+	switch (colorspace) {
+		case V4L2_COLORSPACE_DEFAULT: return "V4L2_COLORSPACE_DEFAULT";
+		case V4L2_COLORSPACE_SMPTE170M: return "V4L2_COLORSPACE_SMPTE170M";
+		case V4L2_COLORSPACE_SMPTE240M: return "V4L2_COLORSPACE_SMPTE240M";
+		case V4L2_COLORSPACE_REC709: return "V4L2_COLORSPACE_REC709";
+		case V4L2_COLORSPACE_BT878: return "V4L2_COLORSPACE_BT878";
+		case V4L2_COLORSPACE_470_SYSTEM_M: return "V4L2_COLORSPACE_470_SYSTEM_M";
+		case V4L2_COLORSPACE_470_SYSTEM_BG: return "V4L2_COLORSPACE_470_SYSTEM_BG";
+		case V4L2_COLORSPACE_JPEG: return "V4L2_COLORSPACE_JPEG";
+		case V4L2_COLORSPACE_SRGB: return "V4L2_COLORSPACE_SRGB";
+		case V4L2_COLORSPACE_OPRGB: return "V4L2_COLORSPACE_OPRGB";
+		case V4L2_COLORSPACE_BT2020: return "V4L2_COLORSPACE_BT2020";
+		case V4L2_COLORSPACE_RAW: return "V4L2_COLORSPACE_RAW";
+		case V4L2_COLORSPACE_DCI_P3: return "V4L2_COLORSPACE_DCI_P3";
+	}
+
+	return "UNKNOWN";
+}
+
 void v4l2PrintFormatDesc(const struct v4l2_fmtdesc* fmt) {
 	LOGI("  fmt.index = %d", fmt->index);
 	LOGI("  fmt.type = %s", v4l2BufTypeName(fmt->type));
@@ -419,28 +439,60 @@ void v4l2PrintFormatDesc(const struct v4l2_fmtdesc* fmt) {
 	LOGI("  fmt.mbus_code = %d", fmt->mbus_code);
 }
 
-void v4l2PrintFormat(const struct v4l2_format* fmt) {
+void v4l2PrintPixFormat(const struct v4l2_pix_format* pix) {
+	LOGI("  pix.width = %d", pix->width);
+	LOGI("  pix.height = %d", pix->height);
+	LOGI("  pix.pixelformat = %s", v4l2PixFmtName(pix->pixelformat));
+	LOGI("  pix.field = %x", pix->field); // TODO
+	LOGI("  pix.bytesperline = %d", pix->bytesperline);
+	LOGI("  pix.sizeimage = %d", pix->sizeimage);
+	LOGI("  pix.colorspace = %s", v4l2ColorspaceName(pix->colorspace));
+	LOGI("  pix.priv = %08x", pix->priv); // TODO
+	LOGI("  pix.flags = %08x", pix->flags); // TODO
+		// TODO __u32			ycbcr_enc;
+		// TODO __u32			hsv_enc;
+	LOGI("  pix.quantization = %08x", pix->quantization); // TODO /* enum v4l2_quantization */
+	LOGI("  pix.xfer_func = %08x", pix->xfer_func); // TODO	/* enum v4l2_xfer_func */
+}
+
+void v4l2PrintPixFormatMPlane(const struct v4l2_pix_format_mplane* pix_mp) {
 #define _(v) (v)
 #define FIELDS(X) \
 	X(width, "%u", _) \
 	X(height, "%u", _) \
 	X(field, "%08x", _) \
-	X(colorspace, "%08x", _) \
+	X(colorspace, "%s", v4l2ColorspaceName) \
 	X(num_planes, "%08x", _) \
 	X(flags, "%08x", _) \
 	X(quantization, "%08x", _) \
 	X(xfer_func, "%08x", _) \
 
 #define X(name, ffmt, func) \
-	LOGI("fmt.pix_mp." # name " = " ffmt, func(fmt->fmt.pix_mp.name));
+	LOGI("  pix_mp." # name " = " ffmt, func(pix_mp->name));
 	FIELDS(X)
 #undef X
 #undef _
 #undef FIELDS
 
-	for (int i = 0; i < fmt->fmt.pix_mp.num_planes; ++i) {
-		LOGI("fmt.pix_mp.plane_fmt[%d].sizeimage = %d", i, fmt->fmt.pix_mp.plane_fmt[i].sizeimage);
-		LOGI("fmt.pix_mp.plane_fmt[%d].bytesperline = %d", i, fmt->fmt.pix_mp.plane_fmt[i].bytesperline);
+	for (int i = 0; i < pix_mp->num_planes; ++i) {
+		LOGI("  pix_mp.plane_fmt[%d].sizeimage = %d", i, pix_mp->plane_fmt[i].sizeimage);
+		LOGI("  pix_mp.plane_fmt[%d].bytesperline = %d", i, pix_mp->plane_fmt[i].bytesperline);
+	}
+}
+
+void v4l2PrintFormat(const struct v4l2_format* fmt) {
+	LOGI("  fmt.type = %s", v4l2BufTypeName(fmt->type));
+	switch (fmt->type) {
+		case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+		case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+			v4l2PrintPixFormat(&fmt->fmt.pix);
+			break;
+		case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+		case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+			v4l2PrintPixFormatMPlane(&fmt->fmt.pix_mp);
+			break;
+		default:
+			LOGE("Unimplemented buffer format type");
 	}
 }
 

@@ -18,6 +18,7 @@ typedef struct Buffer {
 typedef struct Endpoint {
 	uint32_t type;
 	uint32_t buffer_capabilities;
+	struct v4l2_format format;
 	Array /*T(struct v4l2_fmtdesc)*/ formats;
 } Endpoint;
 

@@ -71,6 +71,19 @@ static int v4l2AddEndpoint(DeviceV4L2 *dev, uint32_t buffer_type) {
 		point.buffer_capabilities = req.capabilities;
 	}
 
+	// Read current format
+	{
+		point.format = (struct v4l2_format){0};
+		point.format.type = buffer_type;
+		if (0 != ioctl(dev->fd, VIDIOC_G_FMT, &point.format)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_G_FMT, %s): %d, %s",
+				dev->fd, v4l2BufTypeName(buffer_type), errno, strerror(errno));
+			goto fail;
+		}
+
+		v4l2PrintFormat(&point.format);
+	}
+
 	arrayAppend(&dev->endpoints, &point);
 	return 0;
 
