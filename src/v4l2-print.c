@@ -560,11 +560,11 @@ const char *v4l2FrmSizeTypeName(enum v4l2_frmsizetypes type) {
 }
 
 void v4l2PrintFrmSizeDiscrete(const struct v4l2_frmsize_discrete *fsd) {
-	LOGI("   fse.discrete = %dx%d", fsd->width, fsd->height);
+	LOGI("    fsd.discrete = %dx%d", fsd->width, fsd->height);
 }
 
 void v4l2PrintFrmSizeStepwise(const struct v4l2_frmsize_stepwise *fss) {
-	LOGI("   fse.stepwise = [%d..+%dx..%d] x [%d..+%dx..%d]",
+	LOGI("    fss.stepwise = [%d..+%dx..%d] x [%d..+%dx..%d]",
 		fss->min_width, fss->step_width, fss->max_width,
 		fss->min_height, fss->step_height, fss->max_height);
 }
