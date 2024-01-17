@@ -72,38 +72,6 @@ static int subdevFrameIntervalGet(Subdev *sd, int pad) {
 	return 0;
 }
 
-static int subdevEnumFrameSizes(Subdev *sd, int pad, uint32_t mbus_code) {
-	LOGI("Enumerating frame sizes for pad=%d mcode=%s(%08x)", pad, v4l2MbusFmtName(mbus_code), mbus_code);
-	for (int i = 0;; ++i) {
-		struct v4l2_subdev_frame_size_enum fsz = {
-			.index = i,
-			.pad = pad,
-			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
-			.code = mbus_code,
-		};
-
-		if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &fsz)) {
-			if (EINVAL == errno) {
-				LOGI("Pad has %d frame sizes", i);
-				return 0;
-			}
-
-			if (ENOTTY == errno) {
-				LOGI("Pad has no frame sizes");
-				return 0;
-			}
-
-			LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, (pad=%d, code=%08x)): %d, %s",
-				sd->fd, pad, mbus_code, errno, strerror(errno));
-			return errno;
-		}
-
-		v4l2PrintSubdevFrameSize(&fsz);
-	}
-
-	return 0;
-}
-
 static int subdevEnumFrameIntervals(Subdev *sd, int pad, uint32_t mbus_code, int w, int h) {
 	LOGI("Enumerating frame intervals for pad=%d mcode=%s(%08x) size=%dx%d",
 		pad, v4l2MbusFmtName(mbus_code), mbus_code, w, h);
@@ -140,6 +108,42 @@ static int subdevEnumFrameIntervals(Subdev *sd, int pad, uint32_t mbus_code, int
 	return 0;
 }
 
+static int subdevEnumFrameSizes(Subdev *sd, int pad, uint32_t mbus_code) {
+	LOGI("Enumerating frame sizes for pad=%d mcode=%s(%08x)", pad, v4l2MbusFmtName(mbus_code), mbus_code);
+	for (int i = 0;; ++i) {
+		struct v4l2_subdev_frame_size_enum fsz = {
+			.index = i,
+			.pad = pad,
+			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+			.code = mbus_code,
+		};
+
+		if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &fsz)) {
+			if (EINVAL == errno) {
+				LOGI("Pad has %d frame sizes", i);
+				return 0;
+			}
+
+			if (ENOTTY == errno) {
+				LOGI("Pad has no frame sizes");
+				return 0;
+			}
+
+			LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, (pad=%d, code=%08x)): %d, %s",
+				sd->fd, pad, mbus_code, errno, strerror(errno));
+			return errno;
+		}
+
+		v4l2PrintSubdevFrameSize(&fsz);
+
+		subdevEnumFrameIntervals(sd, fsz.pad, fsz.code, fsz.min_width, fsz.min_height);
+		if (fsz.min_width != fsz.max_width || fsz.min_height != fsz.max_height)
+			subdevEnumFrameIntervals(sd, fsz.pad, fsz.code, fsz.max_width, fsz.max_height);
+	}
+
+	return 0;
+}
+
 static int subdevEnumMbusCodes(Subdev *sd, int pad) {
 	LOGI("Enumerating mbus codes for pad=%d", pad);
 	for (int i = 0;; ++i) {
@@ -167,8 +171,6 @@ static int subdevEnumMbusCodes(Subdev *sd, int pad) {
 		v4l2PrintSubdevMbusCode(&mbc);
 
 		subdevEnumFrameSizes(sd, mbc.pad, mbc.code);
-		subdevEnumFrameIntervals(sd, mbc.pad, mbc.code,
-			sd->pads[mbc.pad].format.format.width, sd->pads[mbc.pad].format.format.height);
 	}
 
 	return 0;

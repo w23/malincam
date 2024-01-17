@@ -820,11 +820,11 @@ void v4l2PrintSubdevFrameSize(const struct v4l2_subdev_frame_size_enum *fsz) {
 }
 
 void v4l2PrintSubdevFrameInterval(const struct v4l2_subdev_frame_interval_enum *fiv) {
-	LOGI("  fiv.pad = %d", fiv->pad);
-	LOGI("  fiv.index = %d", fiv->index);
-	LOGI("  fiv.code = %s (%08x)", v4l2MbusFmtName(fiv->code), fiv->code);
-	LOGI("  fiv.which = %d", fiv->which);
-	LOGI("  fiv.width = %d", fiv->width);
-	LOGI("  fiv.height = %d", fiv->height);
+	LOGI("   fiv.pad = %d", fiv->pad);
+	LOGI("   fiv.index = %d", fiv->index);
+	LOGI("   fiv.code = %s (%08x)", v4l2MbusFmtName(fiv->code), fiv->code);
+	LOGI("   fiv.which = %d", fiv->which);
+	LOGI("   fiv.width = %d", fiv->width);
+	LOGI("   fiv.height = %d", fiv->height);
 	v4l2PrintInterval("  fiv.interval = ", fiv->interval);
 }
