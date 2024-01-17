@@ -775,13 +775,17 @@ void v4l2PrintSubdevSelection(const struct v4l2_subdev_selection *sel) {
 	LOGI("sel.r = (%d, %d) + (%dx%d)", sel->r.top, sel->r.left, sel->r.width, sel->r.height);
 }
 
+void v4l2PrintInterval(const char *prefix, struct v4l2_fract fr) {
+	LOGI("%s%d/%d (%dms, %dfps)", prefix,
+		fr.numerator, fr.denominator,
+		1000 * fr.denominator / fr.numerator,
+		fr.denominator
+	);
+}
+
 void v4l2PrintFrameInterval(const struct v4l2_subdev_frame_interval *fi) {
 	LOGI("fi.pad = %d", fi->pad);
-	LOGI("fi.interval = %d/%d (%dms, %dfps)",
-		fi->interval.numerator, fi->interval.denominator,
-		1000 * fi->interval.denominator / fi->interval.numerator,
-		fi->interval.denominator
-	);
+	v4l2PrintInterval("fi.interval = ", fi->interval);
 }
 
 #define MCAM_SUBDEV_MBUS_CODE_LIST(X) \
@@ -798,10 +802,29 @@ void v4l2PrintMbusCodeFlags(uint32_t bits) {
 }
 
 void v4l2PrintSubdevMbusCode(const struct v4l2_subdev_mbus_code_enum *mbc) {
-	LOGI("mbc.pad = %d", mbc->pad);
-	LOGI("mbc.index = %d", mbc->index);
-	LOGI("mbc.code = %s (%08x)", v4l2MbusFmtName(mbc->code), mbc->code);
-	LOGI("mbc.which = %d", mbc->which);
-	LOGI("mbc.flags = %08x", mbc->flags);
+	LOGI(" mbc.pad = %d", mbc->pad);
+	LOGI(" mbc.index = %d", mbc->index);
+	LOGI(" mbc.code = %s (%08x)", v4l2MbusFmtName(mbc->code), mbc->code);
+	LOGI(" mbc.which = %d", mbc->which);
+	LOGI(" mbc.flags = %08x", mbc->flags);
 	v4l2PrintMbusCodeFlags(mbc->flags);
+}
+
+void v4l2PrintSubdevFrameSize(const struct v4l2_subdev_frame_size_enum *fsz) {
+	LOGI("  fsz.pad = %d", fsz->pad);
+	LOGI("  fsz.index = %d", fsz->index);
+	LOGI("  fsz.code = %s (%08x)", v4l2MbusFmtName(fsz->code), fsz->code);
+	LOGI("  fsz.which = %d", fsz->which);
+	LOGI("  fsz.width = %d..%d", fsz->min_width, fsz->max_width);
+	LOGI("  fsz.height = %d..%d", fsz->min_height, fsz->max_height);
+}
+
+void v4l2PrintSubdevFrameInterval(const struct v4l2_subdev_frame_interval_enum *fiv) {
+	LOGI("  fiv.pad = %d", fiv->pad);
+	LOGI("  fiv.index = %d", fiv->index);
+	LOGI("  fiv.code = %s (%08x)", v4l2MbusFmtName(fiv->code), fiv->code);
+	LOGI("  fiv.which = %d", fiv->which);
+	LOGI("  fiv.width = %d", fiv->width);
+	LOGI("  fiv.height = %d", fiv->height);
+	v4l2PrintInterval("  fiv.interval = ", fiv->interval);
 }

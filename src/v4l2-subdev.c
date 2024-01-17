@@ -14,6 +14,8 @@
 #include <errno.h>
 #include <string.h> // strerror
 
+#include <stdint.h> // uint32_t and friends
+
 static int subdevReadCaps(Subdev *sd) {
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_QUERYCAP, &sd->cap)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_QUERYCAP): %d, %s", sd->fd, errno, strerror(errno));
@@ -31,10 +33,11 @@ static int subdevFormatGet(Subdev *sd, int pad) {
 		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
 	};
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_FMT, &format)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_FMT, pad=%d): %d, %s", pad, sd->fd, errno, strerror(errno));
+		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_FMT, pad=%d): %d, %s", sd->fd, pad, errno, strerror(errno));
 		return -1;
 	}
 
+	sd->pads[pad].format = format;
 	v4l2PrintSubdevFormat(&format);
 
 	return 0;
@@ -46,7 +49,7 @@ static int subdevSelectionGet(Subdev *sd, int pad) {
 		.pad = pad,
 	};
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_SELECTION, &selection)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_SELECTION, pad=%d): %d, %s", pad, sd->fd, errno, strerror(errno));
+		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_SELECTION, pad=%d): %d, %s", sd->fd, pad, errno, strerror(errno));
 		return -1;
 	}
 
@@ -60,7 +63,7 @@ static int subdevFrameIntervalGet(Subdev *sd, int pad) {
 		.pad = pad,
 	};
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_FRAME_INTERVAL, &fi)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_FRAME_INTERVAL, pad=%d): %d, %s", pad, sd->fd, errno, strerror(errno));
+		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_FRAME_INTERVAL, pad=%d): %d, %s", sd->fd, pad, errno, strerror(errno));
 		return -1;
 	}
 
@@ -69,7 +72,76 @@ static int subdevFrameIntervalGet(Subdev *sd, int pad) {
 	return 0;
 }
 
+static int subdevEnumFrameSizes(Subdev *sd, int pad, uint32_t mbus_code) {
+	LOGI("Enumerating frame sizes for pad=%d mcode=%s(%08x)", pad, v4l2MbusFmtName(mbus_code), mbus_code);
+	for (int i = 0;; ++i) {
+		struct v4l2_subdev_frame_size_enum fsz = {
+			.index = i,
+			.pad = pad,
+			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+			.code = mbus_code,
+		};
+
+		if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, &fsz)) {
+			if (EINVAL == errno) {
+				LOGI("Pad has %d frame sizes", i);
+				return 0;
+			}
+
+			if (ENOTTY == errno) {
+				LOGI("Pad has no frame sizes");
+				return 0;
+			}
+
+			LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_ENUM_FRAME_SIZE, (pad=%d, code=%08x)): %d, %s",
+				sd->fd, pad, mbus_code, errno, strerror(errno));
+			return errno;
+		}
+
+		v4l2PrintSubdevFrameSize(&fsz);
+	}
+
+	return 0;
+}
+
+static int subdevEnumFrameIntervals(Subdev *sd, int pad, uint32_t mbus_code, int w, int h) {
+	LOGI("Enumerating frame intervals for pad=%d mcode=%s(%08x) size=%dx%d",
+		pad, v4l2MbusFmtName(mbus_code), mbus_code, w, h);
+
+	for (int i = 0;; ++i) {
+		struct v4l2_subdev_frame_interval_enum fiv = {
+			.index = i,
+			.pad = pad,
+			.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+			.code = mbus_code,
+			.width = w,
+			.height = h,
+		};
+
+		if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_ENUM_FRAME_INTERVAL, &fiv)) {
+			if (EINVAL == errno) {
+				LOGI("Pad has %d frame intervals", i);
+				return 0;
+			}
+
+			if (ENOTTY == errno) {
+				LOGI("Pad has no frame intervals");
+				return 0;
+			}
+
+			LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_ENUM_FRAME_INTERVAL, (pad=%d, code=%08x, %dx%d)): %d, %s",
+				sd->fd, pad, mbus_code, w, h, errno, strerror(errno));
+			return errno;
+		}
+
+		v4l2PrintSubdevFrameInterval(&fiv);
+	}
+
+	return 0;
+}
+
 static int subdevEnumMbusCodes(Subdev *sd, int pad) {
+	LOGI("Enumerating mbus codes for pad=%d", pad);
 	for (int i = 0;; ++i) {
 		struct v4l2_subdev_mbus_code_enum mbc = {
 			.index = i,
@@ -93,6 +165,10 @@ static int subdevEnumMbusCodes(Subdev *sd, int pad) {
 		}
 
 		v4l2PrintSubdevMbusCode(&mbc);
+
+		subdevEnumFrameSizes(sd, mbc.pad, mbc.code);
+		subdevEnumFrameIntervals(sd, mbc.pad, mbc.code,
+			sd->pads[mbc.pad].format.format.width, sd->pads[mbc.pad].format.format.height);
 	}
 
 	return 0;
@@ -117,10 +193,6 @@ Subdev *subdevOpen(const char *name, int pads_count) {
 		subdevSelectionGet(&sd, pad);
 		subdevFrameIntervalGet(&sd, pad);
 		subdevEnumMbusCodes(&sd, pad);
-
-#define VIDIOC_SUBDEV_ENUM_MBUS_CODE		_IOWR('V',  2, struct v4l2_subdev_mbus_code_enum)
-#define VIDIOC_SUBDEV_ENUM_FRAME_SIZE		_IOWR('V', 74, struct v4l2_subdev_frame_size_enum)
-#define VIDIOC_SUBDEV_ENUM_FRAME_INTERVAL	_IOWR('V', 75, struct v4l2_subdev_frame_interval_enum)
 	}
 
 fail:
