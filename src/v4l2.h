@@ -1,10 +1,9 @@
 #pragma once
 
-#include <linux/videodev2.h>
-
-#include <stdint.h> // uint32_t et al.
-
 #include "array.h"
+
+#include <linux/videodev2.h>
+#include <stdint.h> // uint32_t et al.
 
 typedef struct Buffer {
 	struct v4l2_buffer buffer;
@@ -41,6 +40,7 @@ typedef struct DeviceV4L2 {
 	struct v4l2_capability caps;
 	uint32_t this_device_caps;
 
+	// TODO capture/output only!
 	Array endpoints;
 } DeviceV4L2;
 

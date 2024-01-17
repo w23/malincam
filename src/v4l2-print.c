@@ -1,4 +1,6 @@
 #include "v4l2.h"
+#include "v4l2-subdev.h"
+
 #include "common.h"
 
 #define MCAM_V4L2_CAPS(X) \
@@ -581,4 +583,225 @@ void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse) {
 			v4l2PrintFrmSizeStepwise(&fse->stepwise);
 			break;
 	}
+}
+
+void v4l2PrintSubdevCapability(const struct v4l2_subdev_capability *cap) {
+	LOGI("cap.version = %d.%d.%d", FROM_KERNEL_VERSION(cap->version));
+	LOGI("cap.capabilities = %08x", cap->capabilities); // TODO
+}
+
+#define PRINT_FIELD(prefix, s, name, ffmt, func) \
+	LOGI(prefix #name " = " ffmt, func(s->name));
+
+const char *v4l2MbusFmtName(uint32_t format) {
+	switch (format) {
+		case MEDIA_BUS_FMT_FIXED: return "MEDIA_BUS_FMT_FIXED";
+		case MEDIA_BUS_FMT_RGB444_1X12: return "MEDIA_BUS_FMT_RGB444_1X12";
+		case MEDIA_BUS_FMT_RGB444_2X8_PADHI_BE: return "MEDIA_BUS_FMT_RGB444_2X8_PADHI_BE";
+		case MEDIA_BUS_FMT_RGB444_2X8_PADHI_LE: return "MEDIA_BUS_FMT_RGB444_2X8_PADHI_LE";
+		case MEDIA_BUS_FMT_RGB555_2X8_PADHI_BE: return "MEDIA_BUS_FMT_RGB555_2X8_PADHI_BE";
+		case MEDIA_BUS_FMT_RGB555_2X8_PADHI_LE: return "MEDIA_BUS_FMT_RGB555_2X8_PADHI_LE";
+		case MEDIA_BUS_FMT_RGB565_1X16: return "MEDIA_BUS_FMT_RGB565_1X16";
+		case MEDIA_BUS_FMT_BGR565_2X8_BE: return "MEDIA_BUS_FMT_BGR565_2X8_BE";
+		case MEDIA_BUS_FMT_BGR565_2X8_LE: return "MEDIA_BUS_FMT_BGR565_2X8_LE";
+		case MEDIA_BUS_FMT_RGB565_2X8_BE: return "MEDIA_BUS_FMT_RGB565_2X8_BE";
+		case MEDIA_BUS_FMT_RGB565_2X8_LE: return "MEDIA_BUS_FMT_RGB565_2X8_LE";
+		case MEDIA_BUS_FMT_RGB666_1X18: return "MEDIA_BUS_FMT_RGB666_1X18";
+		case MEDIA_BUS_FMT_RBG888_1X24: return "MEDIA_BUS_FMT_RBG888_1X24";
+		case MEDIA_BUS_FMT_RGB666_1X24_CPADHI: return "MEDIA_BUS_FMT_RGB666_1X24_CPADHI";
+		case MEDIA_BUS_FMT_RGB666_1X7X3_SPWG: return "MEDIA_BUS_FMT_RGB666_1X7X3_SPWG";
+		case MEDIA_BUS_FMT_BGR888_1X24: return "MEDIA_BUS_FMT_BGR888_1X24";
+		case MEDIA_BUS_FMT_BGR888_3X8: return "MEDIA_BUS_FMT_BGR888_3X8";
+		case MEDIA_BUS_FMT_GBR888_1X24: return "MEDIA_BUS_FMT_GBR888_1X24";
+		case MEDIA_BUS_FMT_RGB888_1X24: return "MEDIA_BUS_FMT_RGB888_1X24";
+		case MEDIA_BUS_FMT_RGB888_2X12_BE: return "MEDIA_BUS_FMT_RGB888_2X12_BE";
+		case MEDIA_BUS_FMT_RGB888_2X12_LE: return "MEDIA_BUS_FMT_RGB888_2X12_LE";
+		case MEDIA_BUS_FMT_RGB888_3X8: return "MEDIA_BUS_FMT_RGB888_3X8";
+		case MEDIA_BUS_FMT_RGB888_3X8_DELTA: return "MEDIA_BUS_FMT_RGB888_3X8_DELTA";
+		case MEDIA_BUS_FMT_RGB888_1X7X4_SPWG: return "MEDIA_BUS_FMT_RGB888_1X7X4_SPWG";
+		case MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA: return "MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA";
+		case MEDIA_BUS_FMT_RGB666_1X30_CPADLO: return "MEDIA_BUS_FMT_RGB666_1X30_CPADLO";
+		case MEDIA_BUS_FMT_RGB888_1X30_CPADLO: return "MEDIA_BUS_FMT_RGB888_1X30_CPADLO";
+		case MEDIA_BUS_FMT_ARGB8888_1X32: return "MEDIA_BUS_FMT_ARGB8888_1X32";
+		case MEDIA_BUS_FMT_RGB888_1X32_PADHI: return "MEDIA_BUS_FMT_RGB888_1X32_PADHI";
+		case MEDIA_BUS_FMT_RGB101010_1X30: return "MEDIA_BUS_FMT_RGB101010_1X30";
+		case MEDIA_BUS_FMT_RGB666_1X36_CPADLO: return "MEDIA_BUS_FMT_RGB666_1X36_CPADLO";
+		case MEDIA_BUS_FMT_RGB888_1X36_CPADLO: return "MEDIA_BUS_FMT_RGB888_1X36_CPADLO";
+		case MEDIA_BUS_FMT_RGB121212_1X36: return "MEDIA_BUS_FMT_RGB121212_1X36";
+		case MEDIA_BUS_FMT_RGB161616_1X48: return "MEDIA_BUS_FMT_RGB161616_1X48";
+		case MEDIA_BUS_FMT_Y8_1X8: return "MEDIA_BUS_FMT_Y8_1X8";
+		case MEDIA_BUS_FMT_UV8_1X8: return "MEDIA_BUS_FMT_UV8_1X8";
+		case MEDIA_BUS_FMT_UYVY8_1_5X8: return "MEDIA_BUS_FMT_UYVY8_1_5X8";
+		case MEDIA_BUS_FMT_VYUY8_1_5X8: return "MEDIA_BUS_FMT_VYUY8_1_5X8";
+		case MEDIA_BUS_FMT_YUYV8_1_5X8: return "MEDIA_BUS_FMT_YUYV8_1_5X8";
+		case MEDIA_BUS_FMT_YVYU8_1_5X8: return "MEDIA_BUS_FMT_YVYU8_1_5X8";
+		case MEDIA_BUS_FMT_UYVY8_2X8: return "MEDIA_BUS_FMT_UYVY8_2X8";
+		case MEDIA_BUS_FMT_VYUY8_2X8: return "MEDIA_BUS_FMT_VYUY8_2X8";
+		case MEDIA_BUS_FMT_YUYV8_2X8: return "MEDIA_BUS_FMT_YUYV8_2X8";
+		case MEDIA_BUS_FMT_YVYU8_2X8: return "MEDIA_BUS_FMT_YVYU8_2X8";
+		case MEDIA_BUS_FMT_Y10_1X10: return "MEDIA_BUS_FMT_Y10_1X10";
+		case MEDIA_BUS_FMT_Y10_2X8_PADHI_LE: return "MEDIA_BUS_FMT_Y10_2X8_PADHI_LE";
+		case MEDIA_BUS_FMT_UYVY10_2X10: return "MEDIA_BUS_FMT_UYVY10_2X10";
+		case MEDIA_BUS_FMT_VYUY10_2X10: return "MEDIA_BUS_FMT_VYUY10_2X10";
+		case MEDIA_BUS_FMT_YUYV10_2X10: return "MEDIA_BUS_FMT_YUYV10_2X10";
+		case MEDIA_BUS_FMT_YVYU10_2X10: return "MEDIA_BUS_FMT_YVYU10_2X10";
+		case MEDIA_BUS_FMT_Y12_1X12: return "MEDIA_BUS_FMT_Y12_1X12";
+		case MEDIA_BUS_FMT_UYVY12_2X12: return "MEDIA_BUS_FMT_UYVY12_2X12";
+		case MEDIA_BUS_FMT_VYUY12_2X12: return "MEDIA_BUS_FMT_VYUY12_2X12";
+		case MEDIA_BUS_FMT_YUYV12_2X12: return "MEDIA_BUS_FMT_YUYV12_2X12";
+		case MEDIA_BUS_FMT_YVYU12_2X12: return "MEDIA_BUS_FMT_YVYU12_2X12";
+		case MEDIA_BUS_FMT_Y14_1X14: return "MEDIA_BUS_FMT_Y14_1X14";
+		case MEDIA_BUS_FMT_UYVY8_1X16: return "MEDIA_BUS_FMT_UYVY8_1X16";
+		case MEDIA_BUS_FMT_VYUY8_1X16: return "MEDIA_BUS_FMT_VYUY8_1X16";
+		case MEDIA_BUS_FMT_YUYV8_1X16: return "MEDIA_BUS_FMT_YUYV8_1X16";
+		case MEDIA_BUS_FMT_YVYU8_1X16: return "MEDIA_BUS_FMT_YVYU8_1X16";
+		case MEDIA_BUS_FMT_YDYUYDYV8_1X16: return "MEDIA_BUS_FMT_YDYUYDYV8_1X16";
+		case MEDIA_BUS_FMT_UYVY10_1X20: return "MEDIA_BUS_FMT_UYVY10_1X20";
+		case MEDIA_BUS_FMT_VYUY10_1X20: return "MEDIA_BUS_FMT_VYUY10_1X20";
+		case MEDIA_BUS_FMT_YUYV10_1X20: return "MEDIA_BUS_FMT_YUYV10_1X20";
+		case MEDIA_BUS_FMT_YVYU10_1X20: return "MEDIA_BUS_FMT_YVYU10_1X20";
+		case MEDIA_BUS_FMT_VUY8_1X24: return "MEDIA_BUS_FMT_VUY8_1X24";
+		case MEDIA_BUS_FMT_YUV8_1X24: return "MEDIA_BUS_FMT_YUV8_1X24";
+		case MEDIA_BUS_FMT_UYYVYY8_0_5X24: return "MEDIA_BUS_FMT_UYYVYY8_0_5X24";
+		case MEDIA_BUS_FMT_UYVY12_1X24: return "MEDIA_BUS_FMT_UYVY12_1X24";
+		case MEDIA_BUS_FMT_VYUY12_1X24: return "MEDIA_BUS_FMT_VYUY12_1X24";
+		case MEDIA_BUS_FMT_YUYV12_1X24: return "MEDIA_BUS_FMT_YUYV12_1X24";
+		case MEDIA_BUS_FMT_YVYU12_1X24: return "MEDIA_BUS_FMT_YVYU12_1X24";
+		case MEDIA_BUS_FMT_YUV10_1X30: return "MEDIA_BUS_FMT_YUV10_1X30";
+		case MEDIA_BUS_FMT_UYYVYY10_0_5X30: return "MEDIA_BUS_FMT_UYYVYY10_0_5X30";
+		case MEDIA_BUS_FMT_AYUV8_1X32: return "MEDIA_BUS_FMT_AYUV8_1X32";
+		case MEDIA_BUS_FMT_UYYVYY12_0_5X36: return "MEDIA_BUS_FMT_UYYVYY12_0_5X36";
+		case MEDIA_BUS_FMT_YUV12_1X36: return "MEDIA_BUS_FMT_YUV12_1X36";
+		case MEDIA_BUS_FMT_YUV16_1X48: return "MEDIA_BUS_FMT_YUV16_1X48";
+		case MEDIA_BUS_FMT_UYYVYY16_0_5X48: return "MEDIA_BUS_FMT_UYYVYY16_0_5X48";
+		case MEDIA_BUS_FMT_SBGGR8_1X8: return "MEDIA_BUS_FMT_SBGGR8_1X8";
+		case MEDIA_BUS_FMT_SGBRG8_1X8: return "MEDIA_BUS_FMT_SGBRG8_1X8";
+		case MEDIA_BUS_FMT_SGRBG8_1X8: return "MEDIA_BUS_FMT_SGRBG8_1X8";
+		case MEDIA_BUS_FMT_SRGGB8_1X8: return "MEDIA_BUS_FMT_SRGGB8_1X8";
+		case MEDIA_BUS_FMT_SBGGR10_ALAW8_1X8: return "MEDIA_BUS_FMT_SBGGR10_ALAW8_1X8";
+		case MEDIA_BUS_FMT_SGBRG10_ALAW8_1X8: return "MEDIA_BUS_FMT_SGBRG10_ALAW8_1X8";
+		case MEDIA_BUS_FMT_SGRBG10_ALAW8_1X8: return "MEDIA_BUS_FMT_SGRBG10_ALAW8_1X8";
+		case MEDIA_BUS_FMT_SRGGB10_ALAW8_1X8: return "MEDIA_BUS_FMT_SRGGB10_ALAW8_1X8";
+		case MEDIA_BUS_FMT_SBGGR10_DPCM8_1X8: return "MEDIA_BUS_FMT_SBGGR10_DPCM8_1X8";
+		case MEDIA_BUS_FMT_SGBRG10_DPCM8_1X8: return "MEDIA_BUS_FMT_SGBRG10_DPCM8_1X8";
+		case MEDIA_BUS_FMT_SGRBG10_DPCM8_1X8: return "MEDIA_BUS_FMT_SGRBG10_DPCM8_1X8";
+		case MEDIA_BUS_FMT_SRGGB10_DPCM8_1X8: return "MEDIA_BUS_FMT_SRGGB10_DPCM8_1X8";
+		case MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_BE: return "MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_BE";
+		case MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE: return "MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE";
+		case MEDIA_BUS_FMT_SBGGR10_2X8_PADLO_BE: return "MEDIA_BUS_FMT_SBGGR10_2X8_PADLO_BE";
+		case MEDIA_BUS_FMT_SBGGR10_2X8_PADLO_LE: return "MEDIA_BUS_FMT_SBGGR10_2X8_PADLO_LE";
+		case MEDIA_BUS_FMT_SBGGR10_1X10: return "MEDIA_BUS_FMT_SBGGR10_1X10";
+		case MEDIA_BUS_FMT_SGBRG10_1X10: return "MEDIA_BUS_FMT_SGBRG10_1X10";
+		case MEDIA_BUS_FMT_SGRBG10_1X10: return "MEDIA_BUS_FMT_SGRBG10_1X10";
+		case MEDIA_BUS_FMT_SRGGB10_1X10: return "MEDIA_BUS_FMT_SRGGB10_1X10";
+		case MEDIA_BUS_FMT_SBGGR12_1X12: return "MEDIA_BUS_FMT_SBGGR12_1X12";
+		case MEDIA_BUS_FMT_SGBRG12_1X12: return "MEDIA_BUS_FMT_SGBRG12_1X12";
+		case MEDIA_BUS_FMT_SGRBG12_1X12: return "MEDIA_BUS_FMT_SGRBG12_1X12";
+		case MEDIA_BUS_FMT_SRGGB12_1X12: return "MEDIA_BUS_FMT_SRGGB12_1X12";
+		case MEDIA_BUS_FMT_SBGGR14_1X14: return "MEDIA_BUS_FMT_SBGGR14_1X14";
+		case MEDIA_BUS_FMT_SGBRG14_1X14: return "MEDIA_BUS_FMT_SGBRG14_1X14";
+		case MEDIA_BUS_FMT_SGRBG14_1X14: return "MEDIA_BUS_FMT_SGRBG14_1X14";
+		case MEDIA_BUS_FMT_SRGGB14_1X14: return "MEDIA_BUS_FMT_SRGGB14_1X14";
+		case MEDIA_BUS_FMT_SBGGR16_1X16: return "MEDIA_BUS_FMT_SBGGR16_1X16";
+		case MEDIA_BUS_FMT_SGBRG16_1X16: return "MEDIA_BUS_FMT_SGBRG16_1X16";
+		case MEDIA_BUS_FMT_SGRBG16_1X16: return "MEDIA_BUS_FMT_SGRBG16_1X16";
+		case MEDIA_BUS_FMT_SRGGB16_1X16: return "MEDIA_BUS_FMT_SRGGB16_1X16";
+		case MEDIA_BUS_FMT_JPEG_1X8: return "MEDIA_BUS_FMT_JPEG_1X8";
+		case MEDIA_BUS_FMT_S5C_UYVY_JPEG_1X8: return "MEDIA_BUS_FMT_S5C_UYVY_JPEG_1X8";
+		case MEDIA_BUS_FMT_AHSV8888_1X32: return "MEDIA_BUS_FMT_AHSV8888_1X32";
+		case MEDIA_BUS_FMT_METADATA_FIXED: return "MEDIA_BUS_FMT_METADATA_FIXED";
+	}
+	return "UNKNOWN";
+}
+
+void v4l2PrintMbusFramefmt(const struct v4l2_mbus_framefmt *mf) {
+#define FIELDS(prefix, s,X) \
+	X(prefix,s, width, "%d", _) \
+	X(prefix,s, height, "%d", _) \
+	X(prefix,s, code, "%s", v4l2MbusFmtName) \
+	X(prefix,s, field, "%d", _) \
+	X(prefix,s, colorspace, "%s", v4l2ColorspaceName) \
+	X(prefix,s, ycbcr_enc, "%d", _) \
+	X(prefix,s, hsv_enc, "%d", _) \
+	X(prefix,s, quantization, "%d", _) \
+	X(prefix,s, xfer_func, "%d", _) \
+	X(prefix,s, flags, "%08x", _) \
+
+#define _(p) (p)
+	FIELDS(" fmt.format.", mf, PRINT_FIELD)
+#undef _
+}
+
+void v4l2PrintSubdevFormat(const struct v4l2_subdev_format *format) {
+	LOGI("fmt.pad = %d", format->pad);
+	LOGI("fmt.which = %d", format->which); // TODO
+	v4l2PrintMbusFramefmt(&format->format);
+}
+
+#define MCAM_SEL_TGT_LIST(X) \
+	X(V4L2_SEL_TGT_CROP) \
+	X(V4L2_SEL_TGT_CROP_DEFAULT) \
+	X(V4L2_SEL_TGT_CROP_BOUNDS) \
+	X(V4L2_SEL_TGT_NATIVE_SIZE) \
+	X(V4L2_SEL_TGT_COMPOSE) \
+	X(V4L2_SEL_TGT_COMPOSE_DEFAULT) \
+	X(V4L2_SEL_TGT_COMPOSE_BOUNDS) \
+	X(V4L2_SEL_TGT_COMPOSE_PADDED) \
+
+void v4l2PrintSelTgt(uint32_t bits) {
+#define X(bit) if (bits & bit) LOGI("  %s", #bit);
+	MCAM_SEL_TGT_LIST(X)
+#undef X
+}
+
+#define MCAM_SEL_FLAG_LIST(X) \
+	X(V4L2_SEL_FLAG_GE) \
+	X(V4L2_SEL_FLAG_LE) \
+	X(V4L2_SEL_FLAG_KEEP_CONFIG) \
+
+void v4l2PrintSelFlags(uint32_t bits) {
+#define X(bit) if (bits & bit) LOGI("  %s", #bit);
+	MCAM_SEL_FLAG_LIST(X)
+#undef X
+}
+
+void v4l2PrintSubdevSelection(const struct v4l2_subdev_selection *sel) {
+	LOGI("sel.which = %d", sel->which); // TODO
+	LOGI("sel.pad = %d", sel->pad);
+	LOGI("sel.target = %08x", sel->target);
+	v4l2PrintSelTgt(sel->target);
+	LOGI("sel.flags = %08x", sel->flags);
+	v4l2PrintSelFlags(sel->target);
+	LOGI("sel.r = (%d, %d) + (%dx%d)", sel->r.top, sel->r.left, sel->r.width, sel->r.height);
+}
+
+void v4l2PrintFrameInterval(const struct v4l2_subdev_frame_interval *fi) {
+	LOGI("fi.pad = %d", fi->pad);
+	LOGI("fi.interval = %d/%d (%dms, %dfps)",
+		fi->interval.numerator, fi->interval.denominator,
+		1000 * fi->interval.denominator / fi->interval.numerator,
+		fi->interval.denominator
+	);
+}
+
+#define MCAM_SUBDEV_MBUS_CODE_LIST(X) \
+	X(V4L2_SUBDEV_MBUS_CODE_CSC_COLORSPACE) \
+	X(V4L2_SUBDEV_MBUS_CODE_CSC_XFER_FUNC) \
+	X(V4L2_SUBDEV_MBUS_CODE_CSC_YCBCR_ENC) \
+	X(V4L2_SUBDEV_MBUS_CODE_CSC_YCBCR_ENC) \
+	X(V4L2_SUBDEV_MBUS_CODE_CSC_QUANTIZATION) \
+
+void v4l2PrintMbusCodeFlags(uint32_t bits) {
+#define X(bit) if (bits & bit) LOGI("  %s", #bit);
+	MCAM_SEL_FLAG_LIST(X)
+#undef X
+}
+
+void v4l2PrintSubdevMbusCode(const struct v4l2_subdev_mbus_code_enum *mbc) {
+	LOGI("mbc.pad = %d", mbc->pad);
+	LOGI("mbc.index = %d", mbc->index);
+	LOGI("mbc.code = %s (%08x)", v4l2MbusFmtName(mbc->code), mbc->code);
+	LOGI("mbc.which = %d", mbc->which);
+	LOGI("mbc.flags = %08x", mbc->flags);
+	v4l2PrintMbusCodeFlags(mbc->flags);
 }
