@@ -43,10 +43,11 @@ static int subdevFormatGet(Subdev *sd, int pad) {
 	return 0;
 }
 
-static int subdevSelectionGet(Subdev *sd, int pad) {
+static int subdevSelectionGet(Subdev *sd, int pad, int target) {
 	struct v4l2_subdev_selection selection = {
 		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
 		.pad = pad,
+		.target = target,
 	};
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_SELECTION, &selection)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_SELECTION, pad=%d): %d, %s", sd->fd, pad, errno, strerror(errno));
@@ -192,7 +193,15 @@ Subdev *subdevOpen(const char *name, int pads_count) {
 	for (int pad = 0; pad < pads_count; ++pad) { 
 		LOGI("Pad %d:", pad);
 		subdevFormatGet(&sd, pad);
-		subdevSelectionGet(&sd, pad);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_NATIVE_SIZE);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_CROP);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_CROP_DEFAULT);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_CROP_BOUNDS);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_COMPOSE);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_COMPOSE_DEFAULT);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_COMPOSE_BOUNDS);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_COMPOSE_ACTIVE);
+		subdevSelectionGet(&sd, pad, V4L2_SEL_TGT_COMPOSE_PADDED);
 		subdevFrameIntervalGet(&sd, pad);
 		subdevEnumMbusCodes(&sd, pad);
 	}
