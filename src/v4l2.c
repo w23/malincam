@@ -192,6 +192,12 @@ static int v4l2_enum_controls_ext(int fd) {
 }
 
 static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
+	// FIXME why (copypasted from current format)
+	fmt->fmt.pix.field = 1;
+	fmt->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
+	fmt->fmt.pix.quantization = V4L2_QUANTIZATION_LIM_RANGE;
+	fmt->fmt.pix.xfer_func = V4L2_XFER_FUNC_SRGB;
+
 	switch (pixelformat) {
 		case V4L2_PIX_FMT_YUYV:
 			{
@@ -201,12 +207,46 @@ static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 				fmt->fmt.pix.height = h;
 				fmt->fmt.pix.sizeimage = w * h * bits_per_pixel / 8;
 				fmt->fmt.pix.bytesperline = w * bits_per_pixel / 8;
+				return 0;
+			}
+			break;
+		case V4L2_PIX_FMT_SBGGR10:
+		case V4L2_PIX_FMT_SGBRG10:
+		case V4L2_PIX_FMT_SGRBG10:
+		case V4L2_PIX_FMT_SRGGB10:
 
-				// FIXME why (copypasted from current format)
-				fmt->fmt.pix.field = 1;
-				fmt->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
-				fmt->fmt.pix.quantization = 2;
-				fmt->fmt.pix.xfer_func = 2;
+		case V4L2_PIX_FMT_SBGGR12:
+		case V4L2_PIX_FMT_SGBRG12:
+		case V4L2_PIX_FMT_SGRBG12:
+		case V4L2_PIX_FMT_SRGGB12:
+
+		case V4L2_PIX_FMT_SBGGR14:
+		case V4L2_PIX_FMT_SGBRG14:
+		case V4L2_PIX_FMT_SGRBG14:
+		case V4L2_PIX_FMT_SRGGB14:
+/*
+		case V4L2_PIX_FMT_SGBRG14P:
+		case V4L2_PIX_FMT_SBGGR10P:
+		case V4L2_PIX_FMT_SGBRG10P:
+		case V4L2_PIX_FMT_SGRBG10P:
+		case V4L2_PIX_FMT_SRGGB10P:
+		case V4L2_PIX_FMT_SBGGR12P:
+		case V4L2_PIX_FMT_SGBRG12P:
+		case V4L2_PIX_FMT_SGRBG12P:
+		case V4L2_PIX_FMT_SRGGB12P:
+		case V4L2_PIX_FMT_SBGGR14P:
+		case V4L2_PIX_FMT_SGRBG14P:
+		case V4L2_PIX_FMT_SRGGB14P:
+*/
+			{
+
+				// w/2 * G + (w/2) * (R+B) 16bit samples
+				const int bits_per_pixel = 16;
+				fmt->fmt.pix.pixelformat = pixelformat;
+				fmt->fmt.pix.width = w;
+				fmt->fmt.pix.height = h;
+				fmt->fmt.pix.sizeimage = w * h * bits_per_pixel / 8;
+				fmt->fmt.pix.bytesperline = w * bits_per_pixel / 8;
 				return 0;
 			}
 			break;

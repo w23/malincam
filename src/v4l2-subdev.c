@@ -277,26 +277,26 @@ int subdevSet(Subdev *sd, SubdevSet *set) {
 	LOGI("Got format %s(%#x) %dx%d", v4l2MbusFmtName(format.format.code), format.format.code,
 		format.format.width, format.format.height);
 
-	struct v4l2_subdev_selection crop = {
+	struct v4l2_subdev_selection crop_bounds = {
 		.pad = set->pad,
 		.which = V4L2_SUBDEV_FORMAT_TRY,
 		.target = V4L2_SEL_TGT_CROP_BOUNDS,
 	};
 
-	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_SELECTION, &crop)) {
+	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_SELECTION, &crop_bounds)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_SELECTION, pad=%d): %d, %s", sd->fd, set->pad, errno, strerror(errno));
 		return -1;
 	}
 
-	LOGI("Got selection crop bounds = (%d,%d) + (%dx%d)",
-		crop.r.top, crop.r.left, crop.r.width, crop.r.height);
+	LOGI("Got try crop bounds = (%d,%d) + (%dx%d)",
+		crop_bounds.r.top, crop_bounds.r.left, crop_bounds.r.width, crop_bounds.r.height);
 
-	if (crop.r.width > set->width || crop.r.height > set->height) {
+	if (crop_bounds.r.width > set->width || crop_bounds.r.height > set->height) {
 		LOGI("Need to crop to %dx%d", set->width, set->height);
 	}
 
 	// Actually set things
-	LOGI("Setting...");
+	LOGI("Setting format...");
 
 	format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_S_FMT, &format)) {
@@ -305,15 +305,49 @@ int subdevSet(Subdev *sd, SubdevSet *set) {
 		return err;
 	}
 
-	crop.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	crop.target = V4L2_SEL_TGT_CROP;
+	LOGI("Format is set...");
+	crop_bounds.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 
+	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_SELECTION, &crop_bounds)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_SELECTION, pad=%d): %d, %s", sd->fd, set->pad, errno, strerror(errno));
+		return -1;
+	}
+
+	LOGI("Got active crop bounds = (%d,%d) + (%dx%d)",
+		crop_bounds.r.top, crop_bounds.r.left, crop_bounds.r.width, crop_bounds.r.height);
+
+	struct v4l2_subdev_selection crop = {
+		.pad = set->pad,
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.target = V4L2_SEL_TGT_CROP,
+	};
 	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_G_SELECTION, &crop)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_G_SELECTION, pad=%d): %d, %s", sd->fd, set->pad, errno, strerror(errno));
 		return -1;
 	}
 
-	// TODO set requested crop
+	LOGI("Got active crop = (%d,%d) + (%dx%d)",
+		crop.r.top, crop.r.left, crop.r.width, crop.r.height);
+
+#if 0
+	// TODO set requested crop properly (center, etc)
+	crop.r.top = crop_bounds.r.top;
+	crop.r.left = crop_bounds.r.left;
+	crop.r.width = set->width;
+	crop.r.height = set->height;
+	crop.flags = V4L2_SEL_FLAG_GE | V4L2_SEL_FLAG_LE;
+	crop.pad = set->pad;
+	crop.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	crop.target = V4L2_SEL_TGT_CROP;
+	LOGI("Setting active crop = (%d,%d) + (%dx%d)",
+		crop.r.top, crop.r.left, crop.r.width, crop.r.height);
+	if (0 != ioctl(sd->fd, VIDIOC_SUBDEV_S_SELECTION, &crop)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_SUBDEV_S_SELECTION, pad=%d): %d, %s", sd->fd, set->pad, errno, strerror(errno));
+		LOGI("Got active crop = (%d,%d) + (%dx%d)",
+			crop.r.top, crop.r.left, crop.r.width, crop.r.height);
+		return -1;
+	}
+#endif
 
 	set->out_crop = crop.r;
 
