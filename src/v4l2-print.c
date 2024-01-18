@@ -748,10 +748,14 @@ void v4l2PrintSubdevFormat(const struct v4l2_subdev_format *format) {
 	X(V4L2_SEL_TGT_COMPOSE_BOUNDS) \
 	X(V4L2_SEL_TGT_COMPOSE_PADDED) \
 
-void v4l2PrintSelTgt(uint32_t bits) {
-#define X(bit) if (bits & bit) LOGI("  %s", #bit);
+const char* v4l2SelTgtName(uint32_t target) {
+	switch(target) {
+#define X(bit) case bit: return #bit;
 	MCAM_SEL_TGT_LIST(X)
 #undef X
+	}
+
+	return "UNKNOWN";
 }
 
 #define MCAM_SEL_FLAG_LIST(X) \
@@ -768,8 +772,7 @@ void v4l2PrintSelFlags(uint32_t bits) {
 void v4l2PrintSubdevSelection(const struct v4l2_subdev_selection *sel) {
 	LOGI("sel.which = %d", sel->which); // TODO
 	LOGI("sel.pad = %d", sel->pad);
-	LOGI("sel.target = %08x", sel->target);
-	v4l2PrintSelTgt(sel->target);
+	LOGI("sel.target = %s(%08x)", v4l2SelTgtName(sel->target), sel->target);
 	LOGI("sel.flags = %08x", sel->flags);
 	v4l2PrintSelFlags(sel->target);
 	LOGI("sel.r = (%d, %d) + (%dx%d)", sel->r.top, sel->r.left, sel->r.width, sel->r.height);
