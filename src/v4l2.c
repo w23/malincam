@@ -191,8 +191,37 @@ static int v4l2_enum_controls_ext(int fd) {
 	return 0;
 }
 
+static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
+	switch (pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
+			{
+				const int bits_per_pixel = 16;
+				fmt->fmt.pix.pixelformat = pixelformat;
+				fmt->fmt.pix.width = w;
+				fmt->fmt.pix.height = h;
+				fmt->fmt.pix.sizeimage = w * h * bits_per_pixel / 8;
+				fmt->fmt.pix.bytesperline = w * bits_per_pixel / 8;
+
+				// FIXME why (copypasted from current format)
+				fmt->fmt.pix.field = 1;
+				fmt->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
+				fmt->fmt.pix.quantization = 2;
+				fmt->fmt.pix.xfer_func = 2;
+				return 0;
+			}
+			break;
+	}
+
+	return EINVAL;
+}
+
 static int endpontSetFormat(Endpoint *ep, int fd, uint32_t pixelformat, int w, int h) {
 	LOGI("Setting format for endpoint=%s(%d)", v4l2BufTypeName(ep->type), ep->type);
+
+	if (ep->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE || ep->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		LOGE("%s: type=%s is multiplane and is not supported", __func__, v4l2BufTypeName(ep->type));
+		return EINVAL;
+	}
 
 	if (0 != endpointGetFormat(ep, fd))
 		return -1;
@@ -201,7 +230,25 @@ static int endpontSetFormat(Endpoint *ep, int fd, uint32_t pixelformat, int w, i
 		return 0;
 	}
 
-	LOGE("%s is not implemented == need bytesperline, sizeimage, mplanes compute code", __func__);
+	struct v4l2_format fmt = {
+		.type = ep->type,
+	};
+
+	if (0 != fillFormatInfo(&fmt, pixelformat, w, h)) {
+		LOGE("Unsupported pixel format %s(%#x)", v4l2PixFmtName(pixelformat), pixelformat);
+		LOGE("%s is not implemented == need bytesperline, sizeimage, mplanes compute code", __func__);
+		return EINVAL;
+	}
+
+	if (0 != ioctl(fd, VIDIOC_S_FMT, &fmt)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT, %s): %d, %s",
+			fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+		return -1;
+	}
+
+	// Remember as current format
+	ep->format = fmt;
+
 	return 0;
 
 #if 0

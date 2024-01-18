@@ -733,8 +733,8 @@ void v4l2PrintMbusFramefmt(const struct v4l2_mbus_framefmt *mf) {
 }
 
 void v4l2PrintSubdevFormat(const struct v4l2_subdev_format *format) {
-	LOGI("fmt.pad = %d", format->pad);
-	LOGI("fmt.which = %d", format->which); // TODO
+	LOGI(" fmt.pad = %d", format->pad);
+	LOGI(" fmt.which = %d", format->which); // TODO
 	v4l2PrintMbusFramefmt(&format->format);
 }
 
