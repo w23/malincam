@@ -21,8 +21,8 @@ uint64_t nowUs(void) {
 static int frame_count = 0;
 static uint64_t prev_frame_us = 0;
 
-static int readFrame(DeviceV4L2 *dev, FILE *fout) {
-	const Buffer *const buf = devV4L2PullBuffer(dev);
+static int readFrame(Device *dev, FILE *fout) {
+	const Buffer *const buf = devicePullBuffer(dev);
 	// TODO differentiate between fatal and EAGAIN | EIO
 	if (!buf)
 		return 1;
@@ -43,13 +43,13 @@ static int readFrame(DeviceV4L2 *dev, FILE *fout) {
 
 	frame_count++;
 
-	if (0 != devV4L2PushBuffer(dev, buf))
+	if (0 != devicePushBuffer(dev, buf))
 		return -2;
 
 	return 0;
 }
 
-static void pullFrames(DeviceV4L2 *dev, int frames) {
+static void pullFrames(Device *dev, int frames) {
 	const char *out_filename = "frames.mjpeg";
 	FILE *fout = fopen(out_filename, "wb");
 	if (!fout) {
@@ -126,14 +126,14 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	struct DeviceV4L2 *dev = devV4L2Open(argv[2]);
+	struct Device *dev = deviceOpen(argv[2]);
 	if (!dev) {
 		LOGE("Failed to open device \"%s\"", argv[1]);
 		return 1;
 	}
 
 	int status = 0;
-	V4L2PrepareOpts opts = {
+	const DeviceEndpointPrepareOpts opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_MMAP,
 		//.pixelformat = V4L2_PIX_FMT_YUYV,
@@ -145,7 +145,7 @@ int main(int argc, const char *argv[]) {
 		//.buffer_func = NULL,
 	};
 
-	if (0 != devV4L2EndpointStart(dev, 0, &opts)) {
+	if (0 != deviceEndpointStart(dev, 0, &opts)) {
 		LOGE("Unable to start");
 		status = 1;
 		goto exit;
@@ -153,9 +153,9 @@ int main(int argc, const char *argv[]) {
 
 	pullFrames(dev, 60);
 
-	devV4L2EndpointStop(dev, 0);
+	deviceEndpointStop(dev, 0);
 
 exit:
-	devV4L2Close(dev);
+	deviceClose(dev);
 	return status;
 }
