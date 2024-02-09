@@ -32,9 +32,9 @@ $(OBJDIR)/%.c.o: %.c
 
 SOURCES += \
 	src/main.c \
-	src/v4l2.c \
+	src/device.c \
+	src/subdev.c \
 	src/v4l2-print.c \
-	src/v4l2-subdev.c \
 
 OBJS = $(SOURCES:%=$(OBJDIR)/%.o)
 DEPS = $(OBJS:%=%.d)

@@ -16,7 +16,7 @@
 #include <stdlib.h> // malloc
 
 #include "common.h"
-#include "v4l2.h"
+#include "device.h"
 
 static int v4l2EnumFormatsForBufferType(DeviceEndpoint *point, int fd, uint32_t type, int mbus_code) {
 	arrayInit(&point->formats, struct v4l2_fmtdesc);

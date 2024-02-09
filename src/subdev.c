@@ -1,4 +1,4 @@
-#include "v4l2-subdev.h"
+#include "subdev.h"
 
 #include "common.h"
 

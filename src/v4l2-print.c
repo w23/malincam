@@ -1,5 +1,5 @@
-#include "v4l2.h"
-#include "v4l2-subdev.h"
+#include "device.h"
+#include "subdev.h"
 
 #include "common.h"
 

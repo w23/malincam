@@ -2,8 +2,8 @@
 #include "array.h"
 
 #include "common.h"
-#include "v4l2.h"
-#include "v4l2-subdev.h"
+#include "device.h"
+#include "subdev.h"
 
 #include <errno.h>
 #include <string.h> // strerror
