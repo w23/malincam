@@ -109,12 +109,16 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
+	// 1. Set pixel format and resolution on the sensor subdevice
+
 	Subdev *sd = subdevOpen(argv[1], 2);
 	if (!sd) exit(1);
 
 	SubdevSet ss = {
 		.pad = 0,
 		.mbus_code = MEDIA_BUS_FMT_SRGGB10_1X10,
+
+		// TODO where to crop?
 		.width = 1332,
 		.height = 990,
 		//.mbus_code = MEDIA_BUS_FMT_SRGGB12_1X12,
@@ -126,11 +130,40 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
+	// 2. Open camera device
 	struct Device *dev = deviceOpen(argv[2]);
 	if (!dev) {
 		LOGE("Failed to open device \"%s\"", argv[1]);
 		return 1;
 	}
+
+	// 3. Open Bayer to YUV encoder
+	// /dev/video12 ?
+
+	// See https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-encoder.html
+	// 3.1 Enum CAPTURE (i.e. "read") formats
+	// 3.2 Set CAPTURE format
+	//     - Will return sizeimage, width, height set for currently set resolution
+	// 3.3 Enum OUTPUT (i.e. "write") formats (Depends on CAPTURE format)
+	// 3.4 Enum framesizes
+	// 3.5 Enum frameintervals
+	// 3.6 Query controls (codec opts, etc)
+	// 3.7 Set OUTPUT format (including width x height)
+	// 3.8 Set frame interval
+	// 3.9 Set selection/crop
+	// 3.10 Alloc and prepare buffers
+	//      - See https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dmabuf.html#dmabuf
+	//      - VIDIOC_REQBUFS to allocated them internally
+	//        https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-reqbufs.html#vidioc-reqbufs
+	//      - VIDIOC_EXPBUF to get DMABUF fds
+	//        https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-expbuf.html#vidioc-expbuf
+	// 3.11 Start streaming on both in/out
+	//      Set timestamp field on "write" buffers to match them to "read" ones
+
+	// 4. Open YUV to MJPEG encoder
+	// /dev/video11
+
+	// N. Start streaming
 
 	int status = 0;
 	const DeviceEndpointPrepareOpts opts = {
