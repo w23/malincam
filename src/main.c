@@ -21,8 +21,8 @@ uint64_t nowUs(void) {
 static int frame_count = 0;
 static uint64_t prev_frame_us = 0;
 
-static int readFrame(Device *dev, FILE *fout) {
-	const Buffer *const buf = devicePullBuffer(dev);
+static int readFrame(DeviceEndpoint *ep, FILE *fout) {
+	const Buffer *const buf = deviceEndpointPullBuffer(ep);
 	// TODO differentiate between fatal and EAGAIN | EIO
 	if (!buf)
 		return 1;
@@ -43,7 +43,7 @@ static int readFrame(Device *dev, FILE *fout) {
 
 	frame_count++;
 
-	if (0 != devicePushBuffer(dev, buf))
+	if (0 != deviceEndpointPushBuffer(ep, buf))
 		return -2;
 
 	return 0;
@@ -80,7 +80,7 @@ static void pullFrames(Device *dev, int frames) {
 					LOGI("select() timeout");
 					continue;
 				case 1: {
-					const int res = readFrame(dev, fout);
+					const int res = readFrame(&dev->capture, fout);
 					if (res < 0) {
 						LOGE("readFrame failed, exiting");
 						goto exit;
@@ -178,7 +178,7 @@ int main(int argc, const char *argv[]) {
 		//.buffer_func = NULL,
 	};
 
-	if (0 != deviceEndpointStart(dev, 0, &opts)) {
+	if (0 != deviceEndpointStart(&dev->capture, &opts)) {
 		LOGE("Unable to start");
 		status = 1;
 		goto exit;
@@ -186,7 +186,7 @@ int main(int argc, const char *argv[]) {
 
 	pullFrames(dev, 60);
 
-	deviceEndpointStop(dev, 0);
+	deviceEndpointStop(&dev->capture);
 
 exit:
 	deviceClose(dev);

@@ -20,6 +20,8 @@ typedef enum {
 } EndpointState;
 
 typedef struct DeviceEndpoint {
+	int dev_fd;
+
 	uint32_t type;
 	uint32_t buffer_capabilities;
 
@@ -40,14 +42,13 @@ typedef struct Device {
 	struct v4l2_capability caps;
 	uint32_t this_device_caps;
 
-	// TODO capture/output only!
-	Array endpoints;
+	DeviceEndpoint capture, output;
 } Device;
 
 struct Device* deviceOpen(const char *devname);
 void deviceClose(struct Device* dev);
 
-typedef int (got_buffer_func)(void *userptr, struct v4l2_buffer *buf);
+//typedef int (got_buffer_func)(void *userptr, struct v4l2_buffer *buf);
 
 typedef struct DeviceEndpointPrepareOpts {
 	uint32_t memory_type;
@@ -62,11 +63,11 @@ typedef struct DeviceEndpointPrepareOpts {
 
 } DeviceEndpointPrepareOpts;
 
-int deviceEndpointStart(struct Device *dev, int endpoint_index, const DeviceEndpointPrepareOpts *opts);
-int deviceEndpointStop(struct Device *dev, int endpoint_index);
+int deviceEndpointStart(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts);
+int deviceEndpointStop(DeviceEndpoint *ep);
 
-const Buffer *devicePullBuffer(struct Device *dev);
-int devicePushBuffer(struct Device *dev, const Buffer *buf);
+const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep);
+int deviceEndpointPushBuffer(DeviceEndpoint *ep, const Buffer *buf);
 
 void v4l2PrintCapabilityBits(uint32_t caps);
 void v4l2PrintBufferCapabilityBits(uint32_t caps);

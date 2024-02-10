@@ -78,8 +78,9 @@ static int endpointGetFormat(DeviceEndpoint *ep, int fd) {
 		return 0;
 }
 
-static int v4l2AddEndpoint(Device *dev, uint32_t buffer_type) {
+static int v4l2AddEndpoint(Device *dev, DeviceEndpoint *ep, uint32_t buffer_type) {
 	DeviceEndpoint point;
+	point.dev_fd = dev->fd;
 	point.type = buffer_type;
 
 	if (0 != v4l2EnumFormatsForBufferType(&point, dev->fd, buffer_type, 0))
@@ -108,7 +109,7 @@ static int v4l2AddEndpoint(Device *dev, uint32_t buffer_type) {
 	LOGI("Current format:");
 	v4l2PrintFormat(&point.format);
 
-	arrayAppend(&dev->endpoints, &point);
+	*ep = point;
 	return 0;
 
 fail:
@@ -127,26 +128,24 @@ static int v4l2QueryCapability(Device *dev) {
 	dev->this_device_caps = dev->caps.capabilities & V4L2_CAP_DEVICE_CAPS
 		? dev->caps.device_caps : dev->caps.capabilities;
 
-	arrayInit(&dev->endpoints, DeviceEndpoint);
-
 	if ((V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_CAPTURE))
+		if (0 != v4l2AddEndpoint(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE))
 			goto fail;
-	}
-
-	if ((V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
+	} else if ((V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
+		if (0 != v4l2AddEndpoint(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
 			goto fail;
+	} else {
+		dev->capture.type = 0;
 	}
 
 	if ((V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_OUTPUT))
+		if (0 != v4l2AddEndpoint(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT))
 			goto fail;
-	}
-
-	if ((V4L2_CAP_VIDEO_OUTPUT_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+	} else if ((V4L2_CAP_VIDEO_OUTPUT_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
+		if (0 != v4l2AddEndpoint(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 			goto fail;
+	} else {
+		dev->output.type = 0;
 	}
 
 	return 0;
@@ -255,7 +254,7 @@ static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 	return EINVAL;
 }
 
-static int endpontSetFormat(DeviceEndpoint *ep, int fd, uint32_t pixelformat, int w, int h) {
+static int endpontSetFormat(DeviceEndpoint *ep, uint32_t pixelformat, int w, int h) {
 	LOGI("Setting format for Deviceendpoint=%s(%d)", v4l2BufTypeName(ep->type), ep->type);
 
 	if (ep->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE || ep->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
@@ -263,7 +262,7 @@ static int endpontSetFormat(DeviceEndpoint *ep, int fd, uint32_t pixelformat, in
 		return EINVAL;
 	}
 
-	if (0 != endpointGetFormat(ep, fd))
+	if (0 != endpointGetFormat(ep, ep->dev_fd))
 		return -1;
 
 	if (w == 0 && h == 0 && pixelformat == 0) {
@@ -280,9 +279,9 @@ static int endpontSetFormat(DeviceEndpoint *ep, int fd, uint32_t pixelformat, in
 		return EINVAL;
 	}
 
-	if (0 != ioctl(fd, VIDIOC_S_FMT, &fmt)) {
+	if (0 != ioctl(ep->dev_fd, VIDIOC_S_FMT, &fmt)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT, %s): %d, %s",
-			fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+			ep->dev_fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
 		return -1;
 	}
 
@@ -323,7 +322,7 @@ tail:
 #endif
 }
 
-static int endpointQueryBuffersMmap(DeviceEndpoint *ep, int fd, const struct v4l2_requestbuffers* req) {
+static int endpointQueryBuffersMmap(DeviceEndpoint *ep, const struct v4l2_requestbuffers* req) {
 	ep->buffers = calloc(req->count, sizeof(*ep->buffers));
 	ep->buffers_count = req->count;
 
@@ -335,17 +334,17 @@ static int endpointQueryBuffersMmap(DeviceEndpoint *ep, int fd, const struct v4l
 			.index = i,
 		};
 
-		if (0 != ioctl(fd, VIDIOC_QUERYBUF, &buf->buffer)) {
-			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", fd, i, errno, strerror(errno));
+		if (0 != ioctl(ep->dev_fd, VIDIOC_QUERYBUF, &buf->buffer)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", ep->dev_fd, i, errno, strerror(errno));
 			goto fail;
 		}
 
 		LOGI("Queried buffer %d:", i);
 		v4l2PrintBuffer(&buf->buffer);
 
-		buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf->buffer.m.offset);
+		buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, ep->dev_fd, buf->buffer.m.offset);
 		if (buf->v.mmap.ptr == MAP_FAILED) {
-			LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", fd, i, errno, strerror(errno));
+			LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", ep->dev_fd, i, errno, strerror(errno));
 			goto fail;
 		}
 	}
@@ -360,7 +359,7 @@ fail:
 	return 1;
 }
 
-static int endpointRequestBuffers(DeviceEndpoint *ep, int fd, uint32_t count, uint32_t memory_type) {
+static int endpointRequestBuffers(DeviceEndpoint *ep, uint32_t count, uint32_t memory_type) {
 	// TODO check if anything changed that require buffer request?
 	// - frame size, pixelformat, etc
 
@@ -368,8 +367,8 @@ static int endpointRequestBuffers(DeviceEndpoint *ep, int fd, uint32_t count, ui
 	req.type = ep->type;
 	req.count = count;
 	req.memory = memory_type;
-	if (0 != ioctl(fd, VIDIOC_REQBUFS, &req)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", fd, errno, strerror(errno));
+	if (0 != ioctl(ep->dev_fd, VIDIOC_REQBUFS, &req)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", ep->dev_fd, errno, strerror(errno));
 		return -1;
 	}
 
@@ -377,7 +376,7 @@ static int endpointRequestBuffers(DeviceEndpoint *ep, int fd, uint32_t count, ui
 
 	switch (req.memory) {
 		case V4L2_MEMORY_MMAP:
-			return endpointQueryBuffersMmap(ep, fd, &req);
+			return endpointQueryBuffersMmap(ep, &req);
 			break;
 		default:
 			LOGE("%s: Unimplemented memory type %s (%d)", __func__, v4l2MemoryTypeName(req.memory), (int)req.memory);
@@ -444,15 +443,14 @@ void deviceClose(struct Device* dev) {
 	if (!dev)
 		return;
 
-	for (int i = 0; i < dev->endpoints.size; ++i)
-		endpointDestroy(arrayAt(&dev->endpoints, DeviceEndpoint, i));
-	arrayDestroy(&dev->endpoints);
+	endpointDestroy(&dev->capture);
+	endpointDestroy(&dev->output);
 
 	close(dev->fd);
 	free(dev);
 }
 
-static int endpointEnqueueBuffers(DeviceEndpoint *ep, int fd) {
+static int endpointEnqueueBuffers(DeviceEndpoint *ep) {
 	for (int i = 0; i < ep->buffers_count; ++i) {
 		struct v4l2_buffer buf = {
 			.type = ep->type,
@@ -460,9 +458,9 @@ static int endpointEnqueueBuffers(DeviceEndpoint *ep, int fd) {
 			.index = i,
 		};
 
-		if (0 != ioctl(fd, VIDIOC_QBUF, &buf)) {
+		if (0 != ioctl(ep->dev_fd, VIDIOC_QBUF, &buf)) {
 			LOGE("Failed to ioctl(%d, VIDIOC_QBUF, %i): %d, %s",
-				fd, i, errno, strerror(errno));
+				ep->dev_fd, i, errno, strerror(errno));
 			return -1;
 		}
 	}
@@ -470,24 +468,22 @@ static int endpointEnqueueBuffers(DeviceEndpoint *ep, int fd) {
 	return 0;
 }
 
-int deviceEndpointStart(struct Device *dev, int endpoint_index, const DeviceEndpointPrepareOpts *opts) {
-	DeviceEndpoint *const ep = arrayAt(&dev->endpoints, DeviceEndpoint, endpoint_index);
-
-	if (0 != endpontSetFormat(ep, dev->fd, opts->pixelformat, opts->width, opts->height)) {
+int deviceEndpointStart(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts) {
+	if (0 != endpontSetFormat(ep, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
 
-	if (0 != endpointRequestBuffers(ep, dev->fd, opts->buffers_count, opts->memory_type)) {
+	if (0 != endpointRequestBuffers(ep, opts->buffers_count, opts->memory_type)) {
 		return -2;
 	}
 
-	if (0 != endpointEnqueueBuffers(ep, dev->fd)) {
+	if (0 != endpointEnqueueBuffers(ep)) {
 		return -3;
 	}
 
-	if (0 != ioctl(dev->fd, VIDIOC_STREAMON, &ep->type)) {
+	if (0 != ioctl(ep->dev_fd, VIDIOC_STREAMON, &ep->type)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_STREAMON, %s): %d, %s",
-			dev->fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+			ep->dev_fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
 		return 1;
 	}
 	
@@ -495,56 +491,47 @@ int deviceEndpointStart(struct Device *dev, int endpoint_index, const DeviceEndp
 	return 0;
 }
 
-int deviceEndpointStop(struct Device *dev, int endpoint_index) {
-	DeviceEndpoint *const ep = arrayAt(&dev->endpoints, DeviceEndpoint, endpoint_index);
-
+int deviceEndpointStop(DeviceEndpoint *ep) {
 	// TODO check whether all buffers are done?
 
-	if (0 != ioctl(dev->fd, VIDIOC_STREAMOFF, &ep->type)) {
+	if (0 != ioctl(ep->dev_fd, VIDIOC_STREAMOFF, &ep->type)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_STREAMON, %s): %d, %s",
-			dev->fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+			ep->dev_fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
 		return 1;
 	}
 
 	return 0;
 }
 
-const Buffer *devicePullBuffer(struct Device *dev) {
-	for (int i = 0; i < dev->endpoints.size; ++i) {
-		DeviceEndpoint *const ep = arrayAt(&dev->endpoints, DeviceEndpoint, i);
+const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep) {
+	if (ep->state != ENDPOINT_STATE_STREAMING)
+		return NULL;
 
-		if (ep->state != ENDPOINT_STATE_STREAMING)
-			continue;
+	struct v4l2_buffer buf = {
+		.type = ep->type,
+		.memory = ep->buffers[0].buffer.memory, // TODO active_memory_type
+	};
 
-		struct v4l2_buffer buf = {
-			.type = ep->type,
-			.memory = ep->buffers[0].buffer.memory, // TODO active_memory_type
-		};
-
-		if (0 != ioctl(dev->fd, VIDIOC_DQBUF, &buf)) {
-			if (errno != EAGAIN) {
-				LOGE("Failed to ioctl(%d, VIDIOC_DQBUF): %d, %s",
-					dev->fd, errno, strerror(errno));
-				return NULL;
-			}
-
-			continue;
+	if (0 != ioctl(ep->dev_fd, VIDIOC_DQBUF, &buf)) {
+		if (errno != EAGAIN) {
+			LOGE("Failed to ioctl(%d, VIDIOC_DQBUF): %d, %s",
+				ep->dev_fd, errno, strerror(errno));
 		}
 
-		Buffer *const ret = ep->buffers + buf.index;
-
-		// TODO check differences
-		ret->buffer = buf;
-		return ret;
+		return NULL;
 	}
 
-	return NULL;
+	Buffer *const ret = ep->buffers + buf.index;
+
+	// TODO check differences
+	ret->buffer = buf;
+	return ret;
 }
 
-int devicePushBuffer(struct Device *dev, const Buffer *buf) {
-	if (0 != ioctl(dev->fd, VIDIOC_QBUF, &buf->buffer)) {
+int deviceEndpointPushBuffer(DeviceEndpoint *ep, const Buffer *buf) {
+	if (0 != ioctl(ep->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
-			dev->fd, errno, strerror(errno));
+			ep->dev_fd, errno, strerror(errno));
 		return errno;
 	}
 
