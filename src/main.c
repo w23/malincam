@@ -102,17 +102,26 @@ exit:
 	fclose(fout);
 }
 
+#define SENSOR_SUBDEV "/dev/v4l-subdev0"
+#define CAMERA_DEV "/dev/video0"
+#define DEBAYER_ISP_DEV "/dev/video12"
+#define ENCODER_DEV "/dev/video11"
+
 int main(int argc, const char *argv[]) {
+	UNUSED(argc);
+	UNUSED(argv);
 	g_begin_us = nowUs();
-	if (argc != 3) {
-		fprintf(stderr, "Usage: %s /dev/v4l-subdev# /dev/video#\n", argv[0]);
-		return 1;
-	}
+	/* if (argc != 3) { */
+	/* 	fprintf(stderr, "Usage: %s /dev/v4l-subdev# /dev/video#\n", argv[0]); */
+	/* 	return 1; */
+	/* } */
 
 	// 1. Set pixel format and resolution on the sensor subdevice
-
-	Subdev *sd = subdevOpen(argv[1], 2);
-	if (!sd) exit(1);
+	Subdev *const sensor = subdevOpen(SENSOR_SUBDEV, 2);
+	if (!sensor) {
+		LOGE("Failed to open sensor subdev");
+		return 1;
+	}
 
 	SubdevSet ss = {
 		.pad = 0,
@@ -125,20 +134,62 @@ int main(int argc, const char *argv[]) {
 		//.width = 2664,
 		//.height = 1980,
 	};
-	if (0 != subdevSet(sd, &ss)) {
+	if (0 != subdevSet(sensor, &ss)) {
 		LOGE("Failed to set up subdev");
 		return 1;
 	}
 
 	// 2. Open camera device
-	struct Device *dev = deviceOpen(argv[2]);
-	if (!dev) {
-		LOGE("Failed to open device \"%s\"", argv[1]);
+	Device *const camera = deviceOpen(CAMERA_DEV);
+	if (!camera) {
+		LOGE("Failed to open camera device");
+		return 1;
+	}
+
+	const DeviceEndpointPrepareOpts camera_capture_opts = {
+		.buffers_count = 3,
+		.memory_type = V4L2_MEMORY_DMABUF,
+		//.pixelformat = V4L2_PIX_FMT_YUYV,
+		//.pixelformat = V4L2_PIX_FMT_SRGGB10,
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.width = ss.width,
+		.height = ss.height,
+		//.userptr = NULL,
+		//.buffer_func = NULL,
+	};
+
+	if (0 != deviceEndpointPrepare(&camera->capture, &camera_capture_opts)) {
+		LOGE("Unable to prepare camera capture endpoint");
 		return 1;
 	}
 
 	// 3. Open Bayer to YUV encoder
 	// /dev/video12 ?
+	Device *const debayer_isp = deviceOpen(DEBAYER_ISP_DEV);
+	if (!debayer_isp) {
+		LOGE("Failed to open debayer isp device");
+		return 1;
+	}
+
+	if (0 != deviceEndpointPrepare(&debayer_isp->output, &camera_capture_opts)) {
+		LOGE("Unable to prepare debayer output endpoint");
+		return 1;
+	}
+
+	const DeviceEndpointPrepareOpts debayer_capture_opts = {
+		.buffers_count = 3,
+		.memory_type = V4L2_MEMORY_DMABUF,
+		.pixelformat = V4L2_PIX_FMT_YUYV,
+		.width = ss.width,
+		.height = ss.height,
+		//.userptr = NULL,
+		//.buffer_func = NULL,
+	};
+
+	if (0 != deviceEndpointPrepare(&debayer_isp->capture, &debayer_capture_opts)) {
+		LOGE("Unable to prepare debayer capture endpoint");
+		return 1;
+	}
 
 	// See https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-encoder.html
 	// 3.1 Enum CAPTURE (i.e. "read") formats
@@ -162,33 +213,66 @@ int main(int argc, const char *argv[]) {
 
 	// 4. Open YUV to MJPEG encoder
 	// /dev/video11
+	Device *const encoder = deviceOpen(ENCODER_DEV);
+	if (!encoder) {
+		LOGE("Failed to open encoder device");
+		return 1;
+	}
 
-	// N. Start streaming
+	if (0 != deviceEndpointPrepare(&encoder->output, &debayer_capture_opts)) {
+		LOGE("Unable to prepare encoder output endpoint");
+		return 1;
+	}
 
-	int status = 0;
-	const DeviceEndpointPrepareOpts opts = {
+	const DeviceEndpointPrepareOpts encoder_capture_opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_MMAP,
-		//.pixelformat = V4L2_PIX_FMT_YUYV,
-		//.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.pixelformat = V4L2_PIX_FMT_MJPEG,
 		.width = ss.width,
 		.height = ss.height,
 		//.userptr = NULL,
 		//.buffer_func = NULL,
 	};
 
-	if (0 != deviceEndpointStart(&dev->capture, &opts)) {
-		LOGE("Unable to start");
-		status = 1;
-		goto exit;
+	if (0 != deviceEndpointPrepare(&encoder->capture, &encoder_capture_opts)) {
+		LOGE("Unable to prepare encoder capture endpoint");
+		return 1;
 	}
 
-	pullFrames(dev, 60);
+	// N. Start streaming
 
-	deviceEndpointStop(&dev->capture);
+	if (0 != deviceEndpointStart(&encoder->capture)) {
+		LOGE("Unable to start encoder:capture");
+		return 1;
+	}
+	if (0 != deviceEndpointStart(&encoder->output)) {
+		LOGE("Unable to start encoder:output");
+		return 1;
+	}
+	if (0 != deviceEndpointStart(&debayer_isp->capture)) {
+		LOGE("Unable to start debayer:capture");
+		return 1;
+	}
+	if (0 != deviceEndpointStart(&debayer_isp->output)) {
+		LOGE("Unable to start debayer:output");
+		return 1;
+	}
+	if (0 != deviceEndpointStart(&camera->capture)) {
+		LOGE("Unable to start camera:capture");
+		return 1;
+	}
 
-exit:
-	deviceClose(dev);
-	return status;
+	pullFrames(camera, 60);
+
+	deviceEndpointStop(&camera->capture);
+	deviceEndpointStop(&debayer_isp->output);
+	deviceEndpointStop(&debayer_isp->capture);
+	deviceEndpointStop(&encoder->output);
+	deviceEndpointStop(&encoder->capture);
+
+	deviceClose(encoder);
+	deviceClose(debayer_isp);
+	deviceClose(camera);
+	subdevClose(sensor);
+	return 0;
 }

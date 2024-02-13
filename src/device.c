@@ -11,7 +11,6 @@
 
 #include <unistd.h> // close
 #include <sys/ioctl.h> // ioctl
-#include <stdint.h> // uint32_t et al.
 
 #include <stdlib.h> // malloc
 
@@ -78,6 +77,19 @@ static int endpointGetFormat(DeviceEndpoint *ep, int fd) {
 		return 0;
 }
 
+static uint32_t v4l2ReadBufferTypeCapabilities(int fd, uint32_t buffer_type) {
+	struct v4l2_requestbuffers req = {0};
+	req.type = buffer_type;
+	req.count = 0;
+	req.memory = V4L2_MEMORY_MMAP;
+	if (0 != ioctl(fd, VIDIOC_REQBUFS, &req)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", fd, errno, strerror(errno));
+		return 0;
+	}
+
+	return req.capabilities;
+}
+
 static int v4l2AddEndpoint(Device *dev, DeviceEndpoint *ep, uint32_t buffer_type) {
 	DeviceEndpoint point;
 	point.dev_fd = dev->fd;
@@ -87,24 +99,16 @@ static int v4l2AddEndpoint(Device *dev, DeviceEndpoint *ep, uint32_t buffer_type
 		goto fail;
 
 	// Read supported memory types
-	{
-		struct v4l2_requestbuffers req = {0};
-		req.type = buffer_type;
-		req.count = 0;
-		req.memory = V4L2_MEMORY_MMAP;
-		if (0 != ioctl(dev->fd, VIDIOC_REQBUFS, &req)) {
-			LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", dev->fd, errno, strerror(errno));
-			goto fail;
-		}
-
-		LOGI("DeviceEndpoint capabilities:");
-		v4l2PrintBufferCapabilityBits(req.capabilities);
-		point.buffer_capabilities = req.capabilities;
+	point.buffer_capabilities = v4l2ReadBufferTypeCapabilities(dev->fd, buffer_type);
+	if (point.buffer_capabilities == 0) {
+		goto fail;
 	}
+	LOGI("DeviceEndpoint capabilities:");
+	v4l2PrintBufferCapabilityBits(point.buffer_capabilities);
 
 	// Read current format
 	if (0 != endpointGetFormat(&point, dev->fd)) {
-			goto fail;
+		goto fail;
 	}
 	LOGI("Current format:");
 	v4l2PrintFormat(&point.format);
@@ -192,6 +196,9 @@ static int v4l2_enum_controls_ext(int fd) {
 
 static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
 	// FIXME why (copypasted from current format)
+	// TODO probably the best way to do this would be to:
+	// 1. Enumerate all the supported formats.
+	// 2. Pick the format with the same pixelformat from the list of supported ones.
 	fmt->fmt.pix.field = 1;
 	fmt->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 	fmt->fmt.pix.quantization = V4L2_QUANTIZATION_LIM_RANGE;
@@ -257,7 +264,7 @@ static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 static int endpontSetFormat(DeviceEndpoint *ep, uint32_t pixelformat, int w, int h) {
 	LOGI("Setting format for Deviceendpoint=%s(%d)", v4l2BufTypeName(ep->type), ep->type);
 
-	if (ep->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE || ep->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if (IS_ENDPOINT_MPLANE(ep)) {
 		LOGE("%s: type=%s is multiplane and is not supported", __func__, v4l2BufTypeName(ep->type));
 		return EINVAL;
 	}
@@ -322,41 +329,68 @@ tail:
 #endif
 }
 
-static int endpointQueryBuffersMmap(DeviceEndpoint *ep, const struct v4l2_requestbuffers* req) {
-	ep->buffers = calloc(req->count, sizeof(*ep->buffers));
-	ep->buffers_count = req->count;
+static int bufferExportDmabufFd(int fd, uint32_t buf_type, uint32_t index, uint32_t plane) {
+	struct v4l2_exportbuffer exp = {
+		.type = buf_type,
+		.index = index,
+		.plane = plane,
+	};
 
-	for (int i = 0; i < ep->buffers_count; ++i) {
-		Buffer *const buf = ep->buffers + i;
-		buf->buffer = (struct v4l2_buffer){
-			.type = req->type,
-			.memory = req->memory,
-			.index = i,
-		};
+	if (0 != ioctl(fd, VIDIOC_EXPBUF, &exp)) {
+		const int err = errno;
+		LOGE("Failed to ioctl(%d, VIDIOC_EXPBUF, [%s, i=%d, p=%d]): %d, %s",
+			fd, v4l2BufTypeName(buf_type), index, plane, errno, strerror(errno));
+		return -err;
+	}
 
-		if (0 != ioctl(ep->dev_fd, VIDIOC_QUERYBUF, &buf->buffer)) {
-			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", ep->dev_fd, i, errno, strerror(errno));
-			goto fail;
+	return exp.fd;
+}
+
+static int bufferDmabufExport(DeviceEndpoint *ep, Buffer *const buf) {
+	const int planes_num = IS_ENDPOINT_MPLANE(ep) ? ep->format.fmt.pix_mp.num_planes : 1;
+	ASSERT(planes_num < VIDEO_MAX_PLANES);
+
+	for (int i = 0; i < planes_num; ++i) {
+		const int fd = bufferExportDmabufFd(ep->dev_fd, ep->type, buf->buffer.index, 0);
+		if (fd <= 0) {
+			// FIXME leaks 0..i fds
+			// TODO clean here, or?
+			return -fd;
 		}
 
-		LOGI("Queried buffer %d:", i);
-		v4l2PrintBuffer(&buf->buffer);
-
-		buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, ep->dev_fd, buf->buffer.m.offset);
-		if (buf->v.mmap.ptr == MAP_FAILED) {
-			LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", ep->dev_fd, i, errno, strerror(errno));
-			goto fail;
-		}
+		buf->v.dmabuf.fd[i] = fd;
 	}
 
 	return 0;
+}
 
-fail:
-	// FIXME remove ones we've already queried?
-	free(ep->buffers);
-	ep->buffers = NULL;
-	ep->buffers_count = 0;
-	return 1;
+static int bufferPrepare(DeviceEndpoint *ep, Buffer *const buf) {
+	switch (buf->buffer.memory) {
+		case V4L2_MEMORY_MMAP:
+			{
+				buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, ep->dev_fd, buf->buffer.m.offset);
+				const int err = errno;
+				if (buf->v.mmap.ptr == MAP_FAILED) {
+					LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", ep->dev_fd, buf->buffer.index, errno, strerror(errno));
+					return err;
+				}
+
+				return 0;
+			}
+
+		case V4L2_MEMORY_DMABUF:
+			// Export DMABUF fds if this is a capture endpoint
+			if (IS_ENDPOINT_CAPTURE(ep)) {
+				return bufferDmabufExport(ep, buf);
+			}
+			return 0;
+
+		default:
+			LOGE("%s: Unimplemented memory type %s (%d)", __func__, v4l2MemoryTypeName(buf->buffer.memory), (int)buf->buffer.memory);
+			return EINVAL;
+	}
+
+	return EINVAL;
 }
 
 static int endpointRequestBuffers(DeviceEndpoint *ep, uint32_t count, uint32_t memory_type) {
@@ -374,17 +408,39 @@ static int endpointRequestBuffers(DeviceEndpoint *ep, uint32_t count, uint32_t m
 
 	v4l2PrintRequestBuffers(&req);
 
-	switch (req.memory) {
-		case V4L2_MEMORY_MMAP:
-			return endpointQueryBuffersMmap(ep, &req);
-			break;
-		default:
-			LOGE("%s: Unimplemented memory type %s (%d)", __func__, v4l2MemoryTypeName(req.memory), (int)req.memory);
-			return 1;
-			break;
-	}
+	ep->buffers = calloc(req.count, sizeof(*ep->buffers));
+	ep->buffers_count = req.count;
+
+	for (int i = 0; i < ep->buffers_count; ++i) {
+		Buffer *const buf = ep->buffers + i;
+		buf->buffer = (struct v4l2_buffer){
+			.type = req.type,
+			.memory = req.memory,
+			.index = i,
+		};
+
+		if (0 != ioctl(ep->dev_fd, VIDIOC_QUERYBUF, &buf->buffer)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", ep->dev_fd, i, errno, strerror(errno));
+			goto fail;
+		}
+
+		LOGI("Queried buffer %d:", i);
+		v4l2PrintBuffer(&buf->buffer);
+
+		if (0 != bufferPrepare(ep, buf)) {
+			LOGE("Error preparing buffer %d", i);
+			goto fail;
+		}
+	} // for ep->buffers_count
 
 	return 0;
+
+fail:
+	// FIXME remove ones we've already queried?
+	free(ep->buffers);
+	ep->buffers = NULL;
+	ep->buffers_count = 0;
+	return 1;
 }
 
 struct Device* deviceOpen(const char *devname) {
@@ -468,7 +524,7 @@ static int endpointEnqueueBuffers(DeviceEndpoint *ep) {
 	return 0;
 }
 
-int deviceEndpointStart(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts) {
+int deviceEndpointPrepare(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts) {
 	if (0 != endpontSetFormat(ep, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
@@ -477,8 +533,17 @@ int deviceEndpointStart(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opt
 		return -2;
 	}
 
-	if (0 != endpointEnqueueBuffers(ep)) {
-		return -3;
+	return 0;
+}
+
+int deviceEndpointStart(DeviceEndpoint *ep) {
+	if (ep->state != ENDPOINT_STATE_IDLE)
+		return -EINPROGRESS;
+
+	if (IS_ENDPOINT_CAPTURE(ep)) {
+		if (0 != endpointEnqueueBuffers(ep)) {
+			return -3;
+		}
 	}
 
 	if (0 != ioctl(ep->dev_fd, VIDIOC_STREAMON, &ep->type)) {
@@ -509,7 +574,7 @@ const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep) {
 
 	struct v4l2_buffer buf = {
 		.type = ep->type,
-		.memory = ep->buffers[0].buffer.memory, // TODO active_memory_type
+		.memory = ep->buffers[0].buffer.memory,
 	};
 
 	if (0 != ioctl(ep->dev_fd, VIDIOC_DQBUF, &buf)) {

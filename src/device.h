@@ -11,6 +11,9 @@ typedef struct Buffer {
 		struct {
 			void *ptr;
 		} mmap;
+		struct {
+			int fd[VIDEO_MAX_PLANES];
+		} dmabuf;
 	} v;
 } Buffer;
 
@@ -35,6 +38,12 @@ typedef struct DeviceEndpoint {
 	int buffers_count;
 } DeviceEndpoint;
 
+#define IS_ENDPOINT_MPLANE(ep) \
+	(((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((ep)->type&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+
+#define IS_ENDPOINT_CAPTURE(ep) \
+	(((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE))
+
 typedef struct Device {
 	int fd;
 	char *name;
@@ -48,8 +57,6 @@ typedef struct Device {
 struct Device* deviceOpen(const char *devname);
 void deviceClose(struct Device* dev);
 
-//typedef int (got_buffer_func)(void *userptr, struct v4l2_buffer *buf);
-
 typedef struct DeviceEndpointPrepareOpts {
 	uint32_t memory_type;
 
@@ -57,13 +64,10 @@ typedef struct DeviceEndpointPrepareOpts {
 
 	uint32_t pixelformat;
 	uint32_t width, height;
-
-	//void *userptr;
-	//got_buffer_func *buffer_func;
-
 } DeviceEndpointPrepareOpts;
 
-int deviceEndpointStart(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts);
+int deviceEndpointPrepare(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts);
+int deviceEndpointStart(DeviceEndpoint *ep);
 int deviceEndpointStop(DeviceEndpoint *ep);
 
 const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep);

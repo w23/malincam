@@ -1,5 +1,10 @@
 #pragma once
 #include <stdio.h>
+#include <assert.h>
+
+#define UNUSED(a) ((void)(a));
+
+#define ASSERT(...) assert(__VA_ARGS__)
 
 #define LOG(prefix, fmt, ...) \
 	fprintf(stderr, prefix fmt "\n", ##__VA_ARGS__)
