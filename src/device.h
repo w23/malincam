@@ -39,10 +39,10 @@ typedef struct DeviceStream {
 } DeviceStream;
 
 #define IS_TYPE_MPLANE(type) \
-	(((type)&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type)&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+	(((type) == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type) == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 
 #define IS_TYPE_CAPTURE(type) \
-	(((type)&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type)&V4L2_BUF_TYPE_VIDEO_CAPTURE))
+	(((type) == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type) == V4L2_BUF_TYPE_VIDEO_CAPTURE))
 
 #define IS_STREAM_MPLANE(st) IS_TYPE_MPLANE((st)->type)
 #define IS_STREAM_CAPTURE(st) IS_TYPE_CAPTURE((st)->type)
