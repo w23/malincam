@@ -366,14 +366,19 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, uint32_t memor
 	st->buffers = calloc(req.count, sizeof(*st->buffers));
 	st->buffers_count = req.count;
 
+	struct v4l2_plane bmplanes[VIDEO_MAX_PLANES];
 	for (int i = 0; i < st->buffers_count; ++i) {
 		Buffer *const buf = st->buffers + i;
-		memset(buf, 0, sizeof(*buf));
 		buf->buffer = (struct v4l2_buffer){
 			.type = req.type,
 			.memory = req.memory,
 			.index = i,
 		};
+
+		if (IS_STREAM_MPLANE(st)) {
+			buf->buffer.m.planes = bmplanes;
+			buf->buffer.length = st->format.fmt.pix_mp.num_planes;
+		}
 
 		if (0 != ioctl(st->dev_fd, VIDIOC_QUERYBUF, &buf->buffer)) {
 			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", st->dev_fd, i, errno, strerror(errno));
