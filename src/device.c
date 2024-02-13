@@ -17,17 +17,20 @@
 #include "common.h"
 #include "device.h"
 
-static int v4l2EnumFormatsForBufferType(DeviceStream *st, int fd, uint32_t type, int mbus_code) {
-	arrayInit(&st->formats, struct v4l2_fmtdesc);
-	LOGI("Enumerating formats for type=%s(%d)", v4l2BufTypeName(type), type);
+int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
+	LOGI("Enumerating formats for type=%s(%x) mbus_code=%s(%x)",
+		v4l2BufTypeName(st->type), st->type,
+		v4l2MbusFmtName(mbus_code), mbus_code);
+	arrayResize(&st->formats);
+
 	for (int i = 0;; ++i) {
 		struct v4l2_fmtdesc fmt;
 		fmt.index = i;
-		fmt.type = type;
+		fmt.type = st->type;
 		fmt.mbus_code = mbus_code;
-		if (0 != ioctl(fd, VIDIOC_ENUM_FMT, &fmt)) {
+		if (0 != ioctl(st->dev_fd, VIDIOC_ENUM_FMT, &fmt)) {
 			if (EINVAL == errno) {
-				LOGI("DeviceStream has %d formats", i);
+				LOGI("Enumerated %d formats", i);
 				return 0;
 			}
 
@@ -36,7 +39,7 @@ static int v4l2EnumFormatsForBufferType(DeviceStream *st, int fd, uint32_t type,
 				return 0;
 			}
 
-			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", fd, errno, strerror(errno));
+			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", st->dev_fd, errno, strerror(errno));
 			return errno;
 		}
 
@@ -47,7 +50,7 @@ static int v4l2EnumFormatsForBufferType(DeviceStream *st, int fd, uint32_t type,
 		// Enumerate possible sizes
 		for (int i = 0;; ++i) {
 			struct v4l2_frmsizeenum fse = { .index = i, .pixel_format = fmt.pixelformat };
-			if (0 != ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &fse)) {
+			if (0 != ioctl(st->dev_fd, VIDIOC_ENUM_FRAMESIZES, &fse)) {
 				if (EINVAL == errno) {
 					LOGI("  Format has %d framesizes", i);
 					break;
@@ -95,8 +98,7 @@ static int streamInit(DeviceStream *st, int fd, uint32_t buffer_type) {
 	stream.dev_fd = fd;
 	stream.type = buffer_type;
 
-	if (0 != v4l2EnumFormatsForBufferType(&stream, fd, buffer_type, 0))
-		goto fail;
+	arrayInit(&stream.formats, struct v4l2_fmtdesc);
 
 	// Read supported memory types
 	stream.buffer_capabilities = v4l2ReadBufferTypeCapabilities(fd, buffer_type);

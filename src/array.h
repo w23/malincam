@@ -17,6 +17,7 @@ typedef struct Array {
 	*(array) = (Array){.data = NULL, .size = 0, .capacity = 0, .item_size = sizeof(T)}; \
 } while (0)
 
+static inline void arrayResize(Array *array) { array->size = 0; }
 void arrayReserve(Array *array, int capacity);
 void arrayAppend(Array *array, const void *item);
 void arrayDestroy(Array *array);

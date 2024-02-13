@@ -146,6 +146,11 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
+	if (0 != deviceStreamQueryFormats(&camera->capture, ss.mbus_code)) {
+		LOGE("Failed to query camera:capture stream formats");
+		return 1;
+	}
+
 	const DeviceStreamPrepareOpts camera_capture_opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_DMABUF,
@@ -159,7 +164,7 @@ int main(int argc, const char *argv[]) {
 	};
 
 	if (0 != deviceStreamPrepare(&camera->capture, &camera_capture_opts)) {
-		LOGE("Unable to prepare camera capture endpoint");
+		LOGE("Unable to prepare camera capture stream");
 		return 1;
 	}
 
@@ -172,7 +177,7 @@ int main(int argc, const char *argv[]) {
 	}
 
 	if (0 != deviceStreamPrepare(&debayer_isp->output, &camera_capture_opts)) {
-		LOGE("Unable to prepare debayer output endpoint");
+		LOGE("Unable to prepare debayer output stream");
 		return 1;
 	}
 
@@ -187,7 +192,7 @@ int main(int argc, const char *argv[]) {
 	};
 
 	if (0 != deviceStreamPrepare(&debayer_isp->capture, &debayer_capture_opts)) {
-		LOGE("Unable to prepare debayer capture endpoint");
+		LOGE("Unable to prepare debayer capture stream");
 		return 1;
 	}
 
@@ -220,7 +225,7 @@ int main(int argc, const char *argv[]) {
 	}
 
 	if (0 != deviceStreamPrepare(&encoder->output, &debayer_capture_opts)) {
-		LOGE("Unable to prepare encoder output endpoint");
+		LOGE("Unable to prepare encoder output stream");
 		return 1;
 	}
 
@@ -235,7 +240,7 @@ int main(int argc, const char *argv[]) {
 	};
 
 	if (0 != deviceStreamPrepare(&encoder->capture, &encoder_capture_opts)) {
-		LOGE("Unable to prepare encoder capture endpoint");
+		LOGE("Unable to prepare encoder capture stream");
 		return 1;
 	}
 

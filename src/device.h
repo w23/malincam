@@ -25,7 +25,7 @@ typedef enum {
 typedef struct DeviceStream {
 	int dev_fd;
 
-	uint32_t type;
+	enum v4l2_buf_type type;
 	uint32_t buffer_capabilities;
 
 	StreamState state;
@@ -38,11 +38,11 @@ typedef struct DeviceStream {
 	int buffers_count;
 } DeviceStream;
 
-#define IS_STREAM_MPLANE(ep) \
-	(((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((ep)->type&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+#define IS_STREAM_MPLANE(st) \
+	(((st)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((st)->type&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 
-#define IS_STREAM_CAPTURE(ep) \
-	(((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE))
+#define IS_STREAM_CAPTURE(st) \
+	(((st)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((st)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE))
 
 typedef struct Device {
 	int fd;
@@ -66,12 +66,15 @@ typedef struct DeviceStreamPrepareOpts {
 	uint32_t width, height;
 } DeviceStreamPrepareOpts;
 
-int deviceStreamPrepare(DeviceStream *ep, const DeviceStreamPrepareOpts *opts);
-int deviceStreamStart(DeviceStream *ep);
-int deviceStreamStop(DeviceStream *ep);
+// @mbus_code is optional
+int deviceStreamQueryFormats(DeviceStream *st, int mbus_code);
 
-const Buffer *deviceStreamPullBuffer(DeviceStream *ep);
-int deviceStreamPushBuffer(DeviceStream *ep, const Buffer *buf);
+int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts);
+int deviceStreamStart(DeviceStream *st);
+int deviceStreamStop(DeviceStream *st);
+
+const Buffer *deviceStreamPullBuffer(DeviceStream *st);
+int deviceStreamPushBuffer(DeviceStream *st, const Buffer *buf);
 
 void v4l2PrintCapabilityBits(uint32_t caps);
 void v4l2PrintBufferCapabilityBits(uint32_t caps);
@@ -87,3 +90,4 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf);
 void v4l2PrintFormatFlags(uint32_t flags);
 const char *v4l2PixFmtName(uint32_t fmt);
 void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse);
+const char *v4l2MbusFmtName(uint32_t format);
