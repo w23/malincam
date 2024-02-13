@@ -90,16 +90,16 @@ static uint32_t v4l2ReadBufferTypeCapabilities(int fd, uint32_t buffer_type) {
 	return req.capabilities;
 }
 
-static int v4l2AddStream(Device *dev, DeviceStream *ep, uint32_t buffer_type) {
+static int streamInit(DeviceStream *ep, int fd, uint32_t buffer_type) {
 	DeviceStream point;
-	point.dev_fd = dev->fd;
+	point.dev_fd = fd;
 	point.type = buffer_type;
 
-	if (0 != v4l2EnumFormatsForBufferType(&point, dev->fd, buffer_type, 0))
+	if (0 != v4l2EnumFormatsForBufferType(&point, fd, buffer_type, 0))
 		goto fail;
 
 	// Read supported memory types
-	point.buffer_capabilities = v4l2ReadBufferTypeCapabilities(dev->fd, buffer_type);
+	point.buffer_capabilities = v4l2ReadBufferTypeCapabilities(fd, buffer_type);
 	if (point.buffer_capabilities == 0) {
 		goto fail;
 	}
@@ -107,7 +107,7 @@ static int v4l2AddStream(Device *dev, DeviceStream *ep, uint32_t buffer_type) {
 	v4l2PrintBufferCapabilityBits(point.buffer_capabilities);
 
 	// Read current format
-	if (0 != streamGetFormat(&point, dev->fd)) {
+	if (0 != streamGetFormat(&point, fd)) {
 		goto fail;
 	}
 	LOGI("Current format:");
@@ -133,20 +133,20 @@ static int v4l2QueryCapability(Device *dev) {
 		? dev->caps.device_caps : dev->caps.capabilities;
 
 	if ((V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
-		if (0 != v4l2AddStream(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE))
+		if (0 != streamInit(&dev->capture, dev-> fd, V4L2_BUF_TYPE_VIDEO_CAPTURE))
 			goto fail;
 	} else if ((V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
-		if (0 != v4l2AddStream(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
+		if (0 != streamInit(&dev->capture, dev-> fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
 			goto fail;
 	} else {
 		dev->capture.type = 0;
 	}
 
 	if ((V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
-		if (0 != v4l2AddStream(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT))
+		if (0 != streamInit(&dev->output, dev-> fd, V4L2_BUF_TYPE_VIDEO_OUTPUT))
 			goto fail;
 	} else if ((V4L2_CAP_VIDEO_OUTPUT_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
-		if (0 != v4l2AddStream(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+		if (0 != streamInit(&dev->output, dev-> fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 			goto fail;
 	} else {
 		dev->output.type = 0;
