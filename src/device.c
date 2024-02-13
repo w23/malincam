@@ -353,11 +353,14 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, uint32_t memor
 	req.type = st->type;
 	req.count = count;
 	req.memory = memory_type;
+	LOGI("Requesting buffers: ");
+	v4l2PrintRequestBuffers(&req);
 	if (0 != ioctl(st->dev_fd, VIDIOC_REQBUFS, &req)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", st->dev_fd, errno, strerror(errno));
 		return -1;
 	}
 
+	LOGI("Requested buffers: ");
 	v4l2PrintRequestBuffers(&req);
 
 	st->buffers = calloc(req.count, sizeof(*st->buffers));
@@ -365,6 +368,7 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, uint32_t memor
 
 	for (int i = 0; i < st->buffers_count; ++i) {
 		Buffer *const buf = st->buffers + i;
+		memset(buf, 0, sizeof(*buf));
 		buf->buffer = (struct v4l2_buffer){
 			.type = req.type,
 			.memory = req.memory,
