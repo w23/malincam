@@ -17,7 +17,7 @@
 #include "common.h"
 #include "device.h"
 
-static int v4l2EnumFormatsForBufferType(DeviceEndpoint *point, int fd, uint32_t type, int mbus_code) {
+static int v4l2EnumFormatsForBufferType(DeviceStream *point, int fd, uint32_t type, int mbus_code) {
 	arrayInit(&point->formats, struct v4l2_fmtdesc);
 	LOGI("Enumerating formats for type=%s(%d)", v4l2BufTypeName(type), type);
 	for (int i = 0;; ++i) {
@@ -27,12 +27,12 @@ static int v4l2EnumFormatsForBufferType(DeviceEndpoint *point, int fd, uint32_t 
 		fmt.mbus_code = mbus_code;
 		if (0 != ioctl(fd, VIDIOC_ENUM_FMT, &fmt)) {
 			if (EINVAL == errno) {
-				LOGI("DeviceEndpoint has %d formats", i);
+				LOGI("DeviceStream has %d formats", i);
 				return 0;
 			}
 
 			if (ENOTTY == errno) {
-				LOGI("DeviceEndpoint has no formats");
+				LOGI("DeviceStream has no formats");
 				return 0;
 			}
 
@@ -65,7 +65,7 @@ static int v4l2EnumFormatsForBufferType(DeviceEndpoint *point, int fd, uint32_t 
 	}
 }
 
-static int endpointGetFormat(DeviceEndpoint *ep, int fd) {
+static int endpointGetFormat(DeviceStream *ep, int fd) {
 		ep->format = (struct v4l2_format){0};
 		ep->format.type = ep->type;
 		if (0 != ioctl(fd, VIDIOC_G_FMT, &ep->format)) {
@@ -90,8 +90,8 @@ static uint32_t v4l2ReadBufferTypeCapabilities(int fd, uint32_t buffer_type) {
 	return req.capabilities;
 }
 
-static int v4l2AddEndpoint(Device *dev, DeviceEndpoint *ep, uint32_t buffer_type) {
-	DeviceEndpoint point;
+static int v4l2AddStream(Device *dev, DeviceStream *ep, uint32_t buffer_type) {
+	DeviceStream point;
 	point.dev_fd = dev->fd;
 	point.type = buffer_type;
 
@@ -103,7 +103,7 @@ static int v4l2AddEndpoint(Device *dev, DeviceEndpoint *ep, uint32_t buffer_type
 	if (point.buffer_capabilities == 0) {
 		goto fail;
 	}
-	LOGI("DeviceEndpoint capabilities:");
+	LOGI("DeviceStream capabilities:");
 	v4l2PrintBufferCapabilityBits(point.buffer_capabilities);
 
 	// Read current format
@@ -133,20 +133,20 @@ static int v4l2QueryCapability(Device *dev) {
 		? dev->caps.device_caps : dev->caps.capabilities;
 
 	if ((V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE))
+		if (0 != v4l2AddStream(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE))
 			goto fail;
 	} else if ((V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
+		if (0 != v4l2AddStream(dev, &dev->capture, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
 			goto fail;
 	} else {
 		dev->capture.type = 0;
 	}
 
 	if ((V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_M2M) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT))
+		if (0 != v4l2AddStream(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT))
 			goto fail;
 	} else if ((V4L2_CAP_VIDEO_OUTPUT_MPLANE | V4L2_CAP_VIDEO_M2M_MPLANE) & dev->this_device_caps) {
-		if (0 != v4l2AddEndpoint(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+		if (0 != v4l2AddStream(dev, &dev->output, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 			goto fail;
 	} else {
 		dev->output.type = 0;
@@ -261,10 +261,10 @@ static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 	return EINVAL;
 }
 
-static int endpontSetFormat(DeviceEndpoint *ep, uint32_t pixelformat, int w, int h) {
+static int endpontSetFormat(DeviceStream *ep, uint32_t pixelformat, int w, int h) {
 	LOGI("Setting format for Deviceendpoint=%s(%d)", v4l2BufTypeName(ep->type), ep->type);
 
-	if (IS_ENDPOINT_MPLANE(ep)) {
+	if (IS_STREAM_MPLANE(ep)) {
 		LOGE("%s: type=%s is multiplane and is not supported", __func__, v4l2BufTypeName(ep->type));
 		return EINVAL;
 	}
@@ -346,8 +346,8 @@ static int bufferExportDmabufFd(int fd, uint32_t buf_type, uint32_t index, uint3
 	return exp.fd;
 }
 
-static int bufferDmabufExport(DeviceEndpoint *ep, Buffer *const buf) {
-	const int planes_num = IS_ENDPOINT_MPLANE(ep) ? ep->format.fmt.pix_mp.num_planes : 1;
+static int bufferDmabufExport(DeviceStream *ep, Buffer *const buf) {
+	const int planes_num = IS_STREAM_MPLANE(ep) ? ep->format.fmt.pix_mp.num_planes : 1;
 	ASSERT(planes_num < VIDEO_MAX_PLANES);
 
 	for (int i = 0; i < planes_num; ++i) {
@@ -364,7 +364,7 @@ static int bufferDmabufExport(DeviceEndpoint *ep, Buffer *const buf) {
 	return 0;
 }
 
-static int bufferPrepare(DeviceEndpoint *ep, Buffer *const buf) {
+static int bufferPrepare(DeviceStream *ep, Buffer *const buf) {
 	switch (buf->buffer.memory) {
 		case V4L2_MEMORY_MMAP:
 			{
@@ -380,7 +380,7 @@ static int bufferPrepare(DeviceEndpoint *ep, Buffer *const buf) {
 
 		case V4L2_MEMORY_DMABUF:
 			// Export DMABUF fds if this is a capture endpoint
-			if (IS_ENDPOINT_CAPTURE(ep)) {
+			if (IS_STREAM_CAPTURE(ep)) {
 				return bufferDmabufExport(ep, buf);
 			}
 			return 0;
@@ -393,7 +393,7 @@ static int bufferPrepare(DeviceEndpoint *ep, Buffer *const buf) {
 	return EINVAL;
 }
 
-static int endpointRequestBuffers(DeviceEndpoint *ep, uint32_t count, uint32_t memory_type) {
+static int endpointRequestBuffers(DeviceStream *ep, uint32_t count, uint32_t memory_type) {
 	// TODO check if anything changed that require buffer request?
 	// - frame size, pixelformat, etc
 
@@ -477,7 +477,7 @@ fail:
 	return NULL;
 }
 
-static void endpointDestroy(DeviceEndpoint *ep) {
+static void endpointDestroy(DeviceStream *ep) {
 	for (int i = 0; i < ep->buffers_count; ++i) {
 		Buffer *const buf = ep->buffers + i;
 		switch (buf->buffer.memory) {
@@ -506,7 +506,7 @@ void deviceClose(struct Device* dev) {
 	free(dev);
 }
 
-static int endpointEnqueueBuffers(DeviceEndpoint *ep) {
+static int endpointEnqueueBuffers(DeviceStream *ep) {
 	for (int i = 0; i < ep->buffers_count; ++i) {
 		struct v4l2_buffer buf = {
 			.type = ep->type,
@@ -524,7 +524,7 @@ static int endpointEnqueueBuffers(DeviceEndpoint *ep) {
 	return 0;
 }
 
-int deviceEndpointPrepare(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts) {
+int deviceStreamPrepare(DeviceStream *ep, const DeviceStreamPrepareOpts *opts) {
 	if (0 != endpontSetFormat(ep, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
@@ -536,11 +536,11 @@ int deviceEndpointPrepare(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *o
 	return 0;
 }
 
-int deviceEndpointStart(DeviceEndpoint *ep) {
-	if (ep->state != ENDPOINT_STATE_IDLE)
+int deviceStreamStart(DeviceStream *ep) {
+	if (ep->state != STREAM_STATE_IDLE)
 		return -EINPROGRESS;
 
-	if (IS_ENDPOINT_CAPTURE(ep)) {
+	if (IS_STREAM_CAPTURE(ep)) {
 		if (0 != endpointEnqueueBuffers(ep)) {
 			return -3;
 		}
@@ -552,11 +552,11 @@ int deviceEndpointStart(DeviceEndpoint *ep) {
 		return 1;
 	}
 	
-	ep->state = ENDPOINT_STATE_STREAMING;
+	ep->state = STREAM_STATE_STREAMING;
 	return 0;
 }
 
-int deviceEndpointStop(DeviceEndpoint *ep) {
+int deviceStreamStop(DeviceStream *ep) {
 	// TODO check whether all buffers are done?
 
 	if (0 != ioctl(ep->dev_fd, VIDIOC_STREAMOFF, &ep->type)) {
@@ -568,8 +568,8 @@ int deviceEndpointStop(DeviceEndpoint *ep) {
 	return 0;
 }
 
-const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep) {
-	if (ep->state != ENDPOINT_STATE_STREAMING)
+const Buffer *deviceStreamPullBuffer(DeviceStream *ep) {
+	if (ep->state != STREAM_STATE_STREAMING)
 		return NULL;
 
 	struct v4l2_buffer buf = {
@@ -593,7 +593,7 @@ const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep) {
 	return ret;
 }
 
-int deviceEndpointPushBuffer(DeviceEndpoint *ep, const Buffer *buf) {
+int deviceStreamPushBuffer(DeviceStream *ep, const Buffer *buf) {
 	if (0 != ioctl(ep->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
 			ep->dev_fd, errno, strerror(errno));

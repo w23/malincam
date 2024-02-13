@@ -21,8 +21,8 @@ uint64_t nowUs(void) {
 static int frame_count = 0;
 static uint64_t prev_frame_us = 0;
 
-static int readFrame(DeviceEndpoint *ep, FILE *fout) {
-	const Buffer *const buf = deviceEndpointPullBuffer(ep);
+static int readFrame(DeviceStream *ep, FILE *fout) {
+	const Buffer *const buf = deviceStreamPullBuffer(ep);
 	// TODO differentiate between fatal and EAGAIN | EIO
 	if (!buf)
 		return 1;
@@ -43,7 +43,7 @@ static int readFrame(DeviceEndpoint *ep, FILE *fout) {
 
 	frame_count++;
 
-	if (0 != deviceEndpointPushBuffer(ep, buf))
+	if (0 != deviceStreamPushBuffer(ep, buf))
 		return -2;
 
 	return 0;
@@ -146,7 +146,7 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	const DeviceEndpointPrepareOpts camera_capture_opts = {
+	const DeviceStreamPrepareOpts camera_capture_opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_DMABUF,
 		//.pixelformat = V4L2_PIX_FMT_YUYV,
@@ -158,7 +158,7 @@ int main(int argc, const char *argv[]) {
 		//.buffer_func = NULL,
 	};
 
-	if (0 != deviceEndpointPrepare(&camera->capture, &camera_capture_opts)) {
+	if (0 != deviceStreamPrepare(&camera->capture, &camera_capture_opts)) {
 		LOGE("Unable to prepare camera capture endpoint");
 		return 1;
 	}
@@ -171,12 +171,12 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	if (0 != deviceEndpointPrepare(&debayer_isp->output, &camera_capture_opts)) {
+	if (0 != deviceStreamPrepare(&debayer_isp->output, &camera_capture_opts)) {
 		LOGE("Unable to prepare debayer output endpoint");
 		return 1;
 	}
 
-	const DeviceEndpointPrepareOpts debayer_capture_opts = {
+	const DeviceStreamPrepareOpts debayer_capture_opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_DMABUF,
 		.pixelformat = V4L2_PIX_FMT_YUYV,
@@ -186,7 +186,7 @@ int main(int argc, const char *argv[]) {
 		//.buffer_func = NULL,
 	};
 
-	if (0 != deviceEndpointPrepare(&debayer_isp->capture, &debayer_capture_opts)) {
+	if (0 != deviceStreamPrepare(&debayer_isp->capture, &debayer_capture_opts)) {
 		LOGE("Unable to prepare debayer capture endpoint");
 		return 1;
 	}
@@ -219,12 +219,12 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	if (0 != deviceEndpointPrepare(&encoder->output, &debayer_capture_opts)) {
+	if (0 != deviceStreamPrepare(&encoder->output, &debayer_capture_opts)) {
 		LOGE("Unable to prepare encoder output endpoint");
 		return 1;
 	}
 
-	const DeviceEndpointPrepareOpts encoder_capture_opts = {
+	const DeviceStreamPrepareOpts encoder_capture_opts = {
 		.buffers_count = 3,
 		.memory_type = V4L2_MEMORY_MMAP,
 		.pixelformat = V4L2_PIX_FMT_MJPEG,
@@ -234,41 +234,41 @@ int main(int argc, const char *argv[]) {
 		//.buffer_func = NULL,
 	};
 
-	if (0 != deviceEndpointPrepare(&encoder->capture, &encoder_capture_opts)) {
+	if (0 != deviceStreamPrepare(&encoder->capture, &encoder_capture_opts)) {
 		LOGE("Unable to prepare encoder capture endpoint");
 		return 1;
 	}
 
 	// N. Start streaming
 
-	if (0 != deviceEndpointStart(&encoder->capture)) {
+	if (0 != deviceStreamStart(&encoder->capture)) {
 		LOGE("Unable to start encoder:capture");
 		return 1;
 	}
-	if (0 != deviceEndpointStart(&encoder->output)) {
+	if (0 != deviceStreamStart(&encoder->output)) {
 		LOGE("Unable to start encoder:output");
 		return 1;
 	}
-	if (0 != deviceEndpointStart(&debayer_isp->capture)) {
+	if (0 != deviceStreamStart(&debayer_isp->capture)) {
 		LOGE("Unable to start debayer:capture");
 		return 1;
 	}
-	if (0 != deviceEndpointStart(&debayer_isp->output)) {
+	if (0 != deviceStreamStart(&debayer_isp->output)) {
 		LOGE("Unable to start debayer:output");
 		return 1;
 	}
-	if (0 != deviceEndpointStart(&camera->capture)) {
+	if (0 != deviceStreamStart(&camera->capture)) {
 		LOGE("Unable to start camera:capture");
 		return 1;
 	}
 
 	pullFrames(camera, 60);
 
-	deviceEndpointStop(&camera->capture);
-	deviceEndpointStop(&debayer_isp->output);
-	deviceEndpointStop(&debayer_isp->capture);
-	deviceEndpointStop(&encoder->output);
-	deviceEndpointStop(&encoder->capture);
+	deviceStreamStop(&camera->capture);
+	deviceStreamStop(&debayer_isp->output);
+	deviceStreamStop(&debayer_isp->capture);
+	deviceStreamStop(&encoder->output);
+	deviceStreamStop(&encoder->capture);
 
 	deviceClose(encoder);
 	deviceClose(debayer_isp);

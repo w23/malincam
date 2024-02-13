@@ -18,17 +18,17 @@ typedef struct Buffer {
 } Buffer;
 
 typedef enum {
-	ENDPOINT_STATE_IDLE = 0,
-	ENDPOINT_STATE_STREAMING,
-} EndpointState;
+	STREAM_STATE_IDLE = 0,
+	STREAM_STATE_STREAMING,
+} StreamState;
 
-typedef struct DeviceEndpoint {
+typedef struct DeviceStream {
 	int dev_fd;
 
 	uint32_t type;
 	uint32_t buffer_capabilities;
 
-	EndpointState state;
+	StreamState state;
 
 	struct v4l2_format format;
 
@@ -36,12 +36,12 @@ typedef struct DeviceEndpoint {
 
 	struct Buffer *buffers;
 	int buffers_count;
-} DeviceEndpoint;
+} DeviceStream;
 
-#define IS_ENDPOINT_MPLANE(ep) \
+#define IS_STREAM_MPLANE(ep) \
 	(((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((ep)->type&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 
-#define IS_ENDPOINT_CAPTURE(ep) \
+#define IS_STREAM_CAPTURE(ep) \
 	(((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((ep)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE))
 
 typedef struct Device {
@@ -51,27 +51,27 @@ typedef struct Device {
 	struct v4l2_capability caps;
 	uint32_t this_device_caps;
 
-	DeviceEndpoint capture, output;
+	DeviceStream capture, output;
 } Device;
 
 struct Device* deviceOpen(const char *devname);
 void deviceClose(struct Device* dev);
 
-typedef struct DeviceEndpointPrepareOpts {
+typedef struct DeviceStreamPrepareOpts {
 	uint32_t memory_type;
 
 	uint32_t buffers_count;
 
 	uint32_t pixelformat;
 	uint32_t width, height;
-} DeviceEndpointPrepareOpts;
+} DeviceStreamPrepareOpts;
 
-int deviceEndpointPrepare(DeviceEndpoint *ep, const DeviceEndpointPrepareOpts *opts);
-int deviceEndpointStart(DeviceEndpoint *ep);
-int deviceEndpointStop(DeviceEndpoint *ep);
+int deviceStreamPrepare(DeviceStream *ep, const DeviceStreamPrepareOpts *opts);
+int deviceStreamStart(DeviceStream *ep);
+int deviceStreamStop(DeviceStream *ep);
 
-const Buffer *deviceEndpointPullBuffer(DeviceEndpoint *ep);
-int deviceEndpointPushBuffer(DeviceEndpoint *ep, const Buffer *buf);
+const Buffer *deviceStreamPullBuffer(DeviceStream *ep);
+int deviceStreamPushBuffer(DeviceStream *ep, const Buffer *buf);
 
 void v4l2PrintCapabilityBits(uint32_t caps);
 void v4l2PrintBufferCapabilityBits(uint32_t caps);
