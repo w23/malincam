@@ -17,8 +17,8 @@
 #include "common.h"
 #include "device.h"
 
-static int v4l2EnumFormatsForBufferType(DeviceStream *point, int fd, uint32_t type, int mbus_code) {
-	arrayInit(&point->formats, struct v4l2_fmtdesc);
+static int v4l2EnumFormatsForBufferType(DeviceStream *st, int fd, uint32_t type, int mbus_code) {
+	arrayInit(&st->formats, struct v4l2_fmtdesc);
 	LOGI("Enumerating formats for type=%s(%d)", v4l2BufTypeName(type), type);
 	for (int i = 0;; ++i) {
 		struct v4l2_fmtdesc fmt;
@@ -61,16 +61,16 @@ static int v4l2EnumFormatsForBufferType(DeviceStream *point, int fd, uint32_t ty
 				break;
 		}
 
-		arrayAppend(&point->formats, &fmt);
+		arrayAppend(&st->formats, &fmt);
 	}
 }
 
-static int streamGetFormat(DeviceStream *ep, int fd) {
-		ep->format = (struct v4l2_format){0};
-		ep->format.type = ep->type;
-		if (0 != ioctl(fd, VIDIOC_G_FMT, &ep->format)) {
+static int streamGetFormat(DeviceStream *st, int fd) {
+		st->format = (struct v4l2_format){0};
+		st->format.type = st->type;
+		if (0 != ioctl(fd, VIDIOC_G_FMT, &st->format)) {
 			LOGE("Failed to ioctl(%d, VIDIOC_G_FMT, %s): %d, %s",
-				fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+				fd, v4l2BufTypeName(st->type), errno, strerror(errno));
 			return -1;
 		}
 
@@ -90,34 +90,34 @@ static uint32_t v4l2ReadBufferTypeCapabilities(int fd, uint32_t buffer_type) {
 	return req.capabilities;
 }
 
-static int streamInit(DeviceStream *ep, int fd, uint32_t buffer_type) {
-	DeviceStream point;
-	point.dev_fd = fd;
-	point.type = buffer_type;
+static int streamInit(DeviceStream *st, int fd, uint32_t buffer_type) {
+	DeviceStream stream;
+	stream.dev_fd = fd;
+	stream.type = buffer_type;
 
-	if (0 != v4l2EnumFormatsForBufferType(&point, fd, buffer_type, 0))
+	if (0 != v4l2EnumFormatsForBufferType(&stream, fd, buffer_type, 0))
 		goto fail;
 
 	// Read supported memory types
-	point.buffer_capabilities = v4l2ReadBufferTypeCapabilities(fd, buffer_type);
-	if (point.buffer_capabilities == 0) {
+	stream.buffer_capabilities = v4l2ReadBufferTypeCapabilities(fd, buffer_type);
+	if (stream.buffer_capabilities == 0) {
 		goto fail;
 	}
 	LOGI("DeviceStream capabilities:");
-	v4l2PrintBufferCapabilityBits(point.buffer_capabilities);
+	v4l2PrintBufferCapabilityBits(stream.buffer_capabilities);
 
 	// Read current format
-	if (0 != streamGetFormat(&point, fd)) {
+	if (0 != streamGetFormat(&stream, fd)) {
 		goto fail;
 	}
 	LOGI("Current format:");
-	v4l2PrintFormat(&point.format);
+	v4l2PrintFormat(&stream.format);
 
-	*ep = point;
+	*st = stream;
 	return 0;
 
 fail:
-	arrayDestroy(&point.formats);
+	arrayDestroy(&stream.formats);
 	return -1;
 }
 
@@ -261,15 +261,15 @@ static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 	return EINVAL;
 }
 
-static int endpontSetFormat(DeviceStream *ep, uint32_t pixelformat, int w, int h) {
-	LOGI("Setting format for Devicestream=%s(%d)", v4l2BufTypeName(ep->type), ep->type);
+static int endpontSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h) {
+	LOGI("Setting format for Devicestream=%s(%d)", v4l2BufTypeName(st->type), st->type);
 
-	if (IS_STREAM_MPLANE(ep)) {
-		LOGE("%s: type=%s is multiplane and is not supported", __func__, v4l2BufTypeName(ep->type));
+	if (IS_STREAM_MPLANE(st)) {
+		LOGE("%s: type=%s is multiplane and is not supported", __func__, v4l2BufTypeName(st->type));
 		return EINVAL;
 	}
 
-	if (0 != streamGetFormat(ep, ep->dev_fd))
+	if (0 != streamGetFormat(st, st->dev_fd))
 		return -1;
 
 	if (w == 0 && h == 0 && pixelformat == 0) {
@@ -277,7 +277,7 @@ static int endpontSetFormat(DeviceStream *ep, uint32_t pixelformat, int w, int h
 	}
 
 	struct v4l2_format fmt = {
-		.type = ep->type,
+		.type = st->type,
 	};
 
 	if (0 != fillFormatInfo(&fmt, pixelformat, w, h)) {
@@ -286,34 +286,34 @@ static int endpontSetFormat(DeviceStream *ep, uint32_t pixelformat, int w, int h
 		return EINVAL;
 	}
 
-	if (0 != ioctl(ep->dev_fd, VIDIOC_S_FMT, &fmt)) {
+	if (0 != ioctl(st->dev_fd, VIDIOC_S_FMT, &fmt)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT, %s): %d, %s",
-			ep->dev_fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+			st->dev_fd, v4l2BufTypeName(st->type), errno, strerror(errno));
 		return -1;
 	}
 
 	// Remember as current format
-	ep->format = fmt;
+	st->format = fmt;
 
 	return 0;
 
 #if 0
 	// TODO
 	LOGI("Seting format to %s %dx%d", v4l2PixFmtName(pixelformat), w, h);
-	switch (ep->type) {
+	switch (st->type) {
 		case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-			ep->format.fmt.pix_mp.width = w;
-			ep->format.fmt.pix_mp.height = h;
-			ep->format.fmt.pix_mp.pixelformat = pixelformat;
+			st->format.fmt.pix_mp.width = w;
+			st->format.fmt.pix_mp.height = h;
+			st->format.fmt.pix_mp.pixelformat = pixelformat;
 			// FIXME bytesperline
 			// TODO mplanes?
 			break;
 		case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 		case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-			ep->format.fmt.pix.width = w;
-			ep->format.fmt.pix.height = h;
-			ep->format.fmt.pix.pixelformat = pixelformat;
+			st->format.fmt.pix.width = w;
+			st->format.fmt.pix.height = h;
+			st->format.fmt.pix.pixelformat = pixelformat;
 			break;
 	}
 
@@ -346,12 +346,12 @@ static int bufferExportDmabufFd(int fd, uint32_t buf_type, uint32_t index, uint3
 	return exp.fd;
 }
 
-static int bufferDmabufExport(DeviceStream *ep, Buffer *const buf) {
-	const int planes_num = IS_STREAM_MPLANE(ep) ? ep->format.fmt.pix_mp.num_planes : 1;
+static int bufferDmabufExport(DeviceStream *st, Buffer *const buf) {
+	const int planes_num = IS_STREAM_MPLANE(st) ? st->format.fmt.pix_mp.num_planes : 1;
 	ASSERT(planes_num < VIDEO_MAX_PLANES);
 
 	for (int i = 0; i < planes_num; ++i) {
-		const int fd = bufferExportDmabufFd(ep->dev_fd, ep->type, buf->buffer.index, 0);
+		const int fd = bufferExportDmabufFd(st->dev_fd, st->type, buf->buffer.index, 0);
 		if (fd <= 0) {
 			// FIXME leaks 0..i fds
 			// TODO clean here, or?
@@ -364,14 +364,14 @@ static int bufferDmabufExport(DeviceStream *ep, Buffer *const buf) {
 	return 0;
 }
 
-static int bufferPrepare(DeviceStream *ep, Buffer *const buf) {
+static int bufferPrepare(DeviceStream *st, Buffer *const buf) {
 	switch (buf->buffer.memory) {
 		case V4L2_MEMORY_MMAP:
 			{
-				buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, ep->dev_fd, buf->buffer.m.offset);
+				buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, buf->buffer.m.offset);
 				const int err = errno;
 				if (buf->v.mmap.ptr == MAP_FAILED) {
-					LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", ep->dev_fd, buf->buffer.index, errno, strerror(errno));
+					LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
 					return err;
 				}
 
@@ -380,8 +380,8 @@ static int bufferPrepare(DeviceStream *ep, Buffer *const buf) {
 
 		case V4L2_MEMORY_DMABUF:
 			// Export DMABUF fds if this is a capture stream
-			if (IS_STREAM_CAPTURE(ep)) {
-				return bufferDmabufExport(ep, buf);
+			if (IS_STREAM_CAPTURE(st)) {
+				return bufferDmabufExport(st, buf);
 			}
 			return 0;
 
@@ -393,67 +393,67 @@ static int bufferPrepare(DeviceStream *ep, Buffer *const buf) {
 	return EINVAL;
 }
 
-static int streamRequestBuffers(DeviceStream *ep, uint32_t count, uint32_t memory_type) {
+static int streamRequestBuffers(DeviceStream *st, uint32_t count, uint32_t memory_type) {
 	// TODO check if anything changed that require buffer request?
 	// - frame size, pixelformat, etc
 
 	struct v4l2_requestbuffers req = {0};
-	req.type = ep->type;
+	req.type = st->type;
 	req.count = count;
 	req.memory = memory_type;
-	if (0 != ioctl(ep->dev_fd, VIDIOC_REQBUFS, &req)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", ep->dev_fd, errno, strerror(errno));
+	if (0 != ioctl(st->dev_fd, VIDIOC_REQBUFS, &req)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", st->dev_fd, errno, strerror(errno));
 		return -1;
 	}
 
 	v4l2PrintRequestBuffers(&req);
 
-	ep->buffers = calloc(req.count, sizeof(*ep->buffers));
-	ep->buffers_count = req.count;
+	st->buffers = calloc(req.count, sizeof(*st->buffers));
+	st->buffers_count = req.count;
 
-	for (int i = 0; i < ep->buffers_count; ++i) {
-		Buffer *const buf = ep->buffers + i;
+	for (int i = 0; i < st->buffers_count; ++i) {
+		Buffer *const buf = st->buffers + i;
 		buf->buffer = (struct v4l2_buffer){
 			.type = req.type,
 			.memory = req.memory,
 			.index = i,
 		};
 
-		if (0 != ioctl(ep->dev_fd, VIDIOC_QUERYBUF, &buf->buffer)) {
-			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", ep->dev_fd, i, errno, strerror(errno));
+		if (0 != ioctl(st->dev_fd, VIDIOC_QUERYBUF, &buf->buffer)) {
+			LOGE("Failed to ioctl(%d, VIDIOC_QUERYBUF, [%d]): %d, %s", st->dev_fd, i, errno, strerror(errno));
 			goto fail;
 		}
 
 		LOGI("Queried buffer %d:", i);
 		v4l2PrintBuffer(&buf->buffer);
 
-		if (0 != bufferPrepare(ep, buf)) {
+		if (0 != bufferPrepare(st, buf)) {
 			LOGE("Error preparing buffer %d", i);
 			goto fail;
 		}
-	} // for ep->buffers_count
+	} // for st->buffers_count
 
 	return 0;
 
 fail:
 	// FIXME remove ones we've already queried?
-	free(ep->buffers);
-	ep->buffers = NULL;
-	ep->buffers_count = 0;
+	free(st->buffers);
+	st->buffers = NULL;
+	st->buffers_count = 0;
 	return 1;
 }
 
-static int streamEnqueueBuffers(DeviceStream *ep) {
-	for (int i = 0; i < ep->buffers_count; ++i) {
+static int streamEnqueueBuffers(DeviceStream *st) {
+	for (int i = 0; i < st->buffers_count; ++i) {
 		struct v4l2_buffer buf = {
-			.type = ep->type,
-			.memory = ep->buffers[0].buffer.memory, // TODO should it be set per-Devicestream globally?
+			.type = st->type,
+			.memory = st->buffers[0].buffer.memory, // TODO should it be set per-Devicestream globally?
 			.index = i,
 		};
 
-		if (0 != ioctl(ep->dev_fd, VIDIOC_QBUF, &buf)) {
+		if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &buf)) {
 			LOGE("Failed to ioctl(%d, VIDIOC_QBUF, %i): %d, %s",
-				ep->dev_fd, i, errno, strerror(errno));
+				st->dev_fd, i, errno, strerror(errno));
 			return -1;
 		}
 	}
@@ -461,9 +461,9 @@ static int streamEnqueueBuffers(DeviceStream *ep) {
 	return 0;
 }
 
-static void streamDestroy(DeviceStream *ep) {
-	for (int i = 0; i < ep->buffers_count; ++i) {
-		Buffer *const buf = ep->buffers + i;
+static void streamDestroy(DeviceStream *st) {
+	for (int i = 0; i < st->buffers_count; ++i) {
+		Buffer *const buf = st->buffers + i;
 		switch (buf->buffer.memory) {
 			case V4L2_MEMORY_MMAP:
 				if (buf->v.mmap.ptr && 0 != munmap(buf->v.mmap.ptr, buf->buffer.length)) {
@@ -473,10 +473,10 @@ static void streamDestroy(DeviceStream *ep) {
 		}
 	}
 
-	if (ep->buffers)
-		free(ep->buffers);
+	if (st->buffers)
+		free(st->buffers);
 
-	arrayDestroy(&ep->formats);
+	arrayDestroy(&st->formats);
 }
 
 struct Device* deviceOpen(const char *devname) {
@@ -524,81 +524,81 @@ void deviceClose(struct Device* dev) {
 	free(dev);
 }
 
-int deviceStreamPrepare(DeviceStream *ep, const DeviceStreamPrepareOpts *opts) {
-	if (0 != endpontSetFormat(ep, opts->pixelformat, opts->width, opts->height)) {
+int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
+	if (0 != endpontSetFormat(st, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
 
-	if (0 != streamRequestBuffers(ep, opts->buffers_count, opts->memory_type)) {
+	if (0 != streamRequestBuffers(st, opts->buffers_count, opts->memory_type)) {
 		return -2;
 	}
 
 	return 0;
 }
 
-int deviceStreamStart(DeviceStream *ep) {
-	if (ep->state != STREAM_STATE_IDLE)
+int deviceStreamStart(DeviceStream *st) {
+	if (st->state != STREAM_STATE_IDLE)
 		return -EINPROGRESS;
 
 	// Capture stream should have all of its buffers ready for writing
 	// TODO what should be done about starting-stopping stream?
-	if (IS_STREAM_CAPTURE(ep)) {
-		if (0 != streamEnqueueBuffers(ep)) {
+	if (IS_STREAM_CAPTURE(st)) {
+		if (0 != streamEnqueueBuffers(st)) {
 			return -3;
 		}
 	}
 
-	if (0 != ioctl(ep->dev_fd, VIDIOC_STREAMON, &ep->type)) {
+	if (0 != ioctl(st->dev_fd, VIDIOC_STREAMON, &st->type)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_STREAMON, %s): %d, %s",
-			ep->dev_fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+			st->dev_fd, v4l2BufTypeName(st->type), errno, strerror(errno));
 		return 1;
 	}
 	
-	ep->state = STREAM_STATE_STREAMING;
+	st->state = STREAM_STATE_STREAMING;
 	return 0;
 }
 
-int deviceStreamStop(DeviceStream *ep) {
+int deviceStreamStop(DeviceStream *st) {
 	// TODO check whether all buffers are done?
 
-	if (0 != ioctl(ep->dev_fd, VIDIOC_STREAMOFF, &ep->type)) {
+	if (0 != ioctl(st->dev_fd, VIDIOC_STREAMOFF, &st->type)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_STREAMON, %s): %d, %s",
-			ep->dev_fd, v4l2BufTypeName(ep->type), errno, strerror(errno));
+			st->dev_fd, v4l2BufTypeName(st->type), errno, strerror(errno));
 		return 1;
 	}
 
 	return 0;
 }
 
-const Buffer *deviceStreamPullBuffer(DeviceStream *ep) {
-	if (ep->state != STREAM_STATE_STREAMING)
+const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
+	if (st->state != STREAM_STATE_STREAMING)
 		return NULL;
 
 	struct v4l2_buffer buf = {
-		.type = ep->type,
-		.memory = ep->buffers[0].buffer.memory,
+		.type = st->type,
+		.memory = st->buffers[0].buffer.memory,
 	};
 
-	if (0 != ioctl(ep->dev_fd, VIDIOC_DQBUF, &buf)) {
+	if (0 != ioctl(st->dev_fd, VIDIOC_DQBUF, &buf)) {
 		if (errno != EAGAIN) {
 			LOGE("Failed to ioctl(%d, VIDIOC_DQBUF): %d, %s",
-				ep->dev_fd, errno, strerror(errno));
+				st->dev_fd, errno, strerror(errno));
 		}
 
 		return NULL;
 	}
 
-	Buffer *const ret = ep->buffers + buf.index;
+	Buffer *const ret = st->buffers + buf.index;
 
 	// TODO check differences
 	ret->buffer = buf;
 	return ret;
 }
 
-int deviceStreamPushBuffer(DeviceStream *ep, const Buffer *buf) {
-	if (0 != ioctl(ep->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
+int deviceStreamPushBuffer(DeviceStream *st, const Buffer *buf) {
+	if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
-			ep->dev_fd, errno, strerror(errno));
+			st->dev_fd, errno, strerror(errno));
 		return errno;
 	}
 
