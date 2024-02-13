@@ -176,8 +176,18 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
+	if (0 != deviceStreamQueryFormats(&debayer_isp->output, 0)) {
+		LOGE("Failed to query debayer:output stream formats");
+		return 1;
+	}
+
 	if (0 != deviceStreamPrepare(&debayer_isp->output, &camera_capture_opts)) {
-		LOGE("Unable to prepare debayer output stream");
+		LOGE("Unable to prepare debayer:output stream");
+		return 1;
+	}
+
+	if (0 != deviceStreamQueryFormats(&debayer_isp->capture, 0)) {
+		LOGE("Failed to query debayer:capture stream formats");
 		return 1;
 	}
 
@@ -224,8 +234,18 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
+	if (0 != deviceStreamQueryFormats(&encoder->output, 0)) {
+		LOGE("Failed to query encoder:output stream formats");
+		return 1;
+	}
+
 	if (0 != deviceStreamPrepare(&encoder->output, &debayer_capture_opts)) {
 		LOGE("Unable to prepare encoder output stream");
+		return 1;
+	}
+
+	if (0 != deviceStreamQueryFormats(&encoder->capture, 0)) {
+		LOGE("Failed to query encoder:capture stream formats");
 		return 1;
 	}
 

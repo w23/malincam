@@ -38,11 +38,14 @@ typedef struct DeviceStream {
 	int buffers_count;
 } DeviceStream;
 
-#define IS_STREAM_MPLANE(st) \
-	(((st)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((st)->type&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
+#define IS_TYPE_MPLANE(type) \
+	(((type)&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type)&V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 
-#define IS_STREAM_CAPTURE(st) \
-	(((st)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((st)->type&V4L2_BUF_TYPE_VIDEO_CAPTURE))
+#define IS_TYPE_CAPTURE(type) \
+	(((type)&V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type)&V4L2_BUF_TYPE_VIDEO_CAPTURE))
+
+#define IS_STREAM_MPLANE(st) IS_TYPE_MPLANE((st)->type)
+#define IS_STREAM_CAPTURE(st) IS_TYPE_CAPTURE((st)->type)
 
 typedef struct Device {
 	int fd;
@@ -66,7 +69,7 @@ typedef struct DeviceStreamPrepareOpts {
 	uint32_t width, height;
 } DeviceStreamPrepareOpts;
 
-// @mbus_code is optional
+// @mbus_code is optional, set to 0 if not known
 int deviceStreamQueryFormats(DeviceStream *st, int mbus_code);
 
 int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts);

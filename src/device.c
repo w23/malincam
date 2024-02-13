@@ -17,57 +17,6 @@
 #include "common.h"
 #include "device.h"
 
-int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
-	LOGI("Enumerating formats for type=%s(%x) mbus_code=%s(%x)",
-		v4l2BufTypeName(st->type), st->type,
-		v4l2MbusFmtName(mbus_code), mbus_code);
-	arrayResize(&st->formats);
-
-	for (int i = 0;; ++i) {
-		struct v4l2_fmtdesc fmt;
-		fmt.index = i;
-		fmt.type = st->type;
-		fmt.mbus_code = mbus_code;
-		if (0 != ioctl(st->dev_fd, VIDIOC_ENUM_FMT, &fmt)) {
-			if (EINVAL == errno) {
-				LOGI("Enumerated %d formats", i);
-				return 0;
-			}
-
-			if (ENOTTY == errno) {
-				LOGI("DeviceStream has no formats");
-				return 0;
-			}
-
-			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", st->dev_fd, errno, strerror(errno));
-			return errno;
-		}
-
-		//v4l2PrintFormatDesc(&fmt);
-		LOGI("  fmt[%d] = {%s, %s}", i, v4l2PixFmtName(fmt.pixelformat), fmt.description);
-		v4l2PrintFormatFlags(fmt.flags);
-
-		// Enumerate possible sizes
-		for (int i = 0;; ++i) {
-			struct v4l2_frmsizeenum fse = { .index = i, .pixel_format = fmt.pixelformat };
-			if (0 != ioctl(st->dev_fd, VIDIOC_ENUM_FRAMESIZES, &fse)) {
-				if (EINVAL == errno) {
-					LOGI("  Format has %d framesizes", i);
-					break;
-				}
-			}
-
-			v4l2PrintFrmSizeEnum(&fse);
-
-			// Only discrete supports index > 0
-			if (fse.type != V4L2_FRMSIZE_TYPE_DISCRETE)
-				break;
-		}
-
-		arrayAppend(&st->formats, &fmt);
-	}
-}
-
 static int streamGetFormat(DeviceStream *st, int fd) {
 		st->format = (struct v4l2_format){0};
 		st->format.type = st->type;
@@ -161,6 +110,7 @@ fail:
 	return -1;
 }
 
+/*
 static int v4l2_enum_input(int fd) {
 	for (int i = 0;; ++i) {
 		struct v4l2_input input;
@@ -184,6 +134,7 @@ static int v4l2_enum_input(int fd) {
 		v4l2PrintInput(&input);
 	}
 }
+*/
 
 static int v4l2_enum_controls_ext(int fd) {
 	struct v4l2_queryctrl qctrl;
@@ -196,28 +147,18 @@ static int v4l2_enum_controls_ext(int fd) {
 	return 0;
 }
 
-static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
-	// FIXME why (copypasted from current format)
-	// TODO probably the best way to do this would be to:
-	// 1. Enumerate all the supported formats.
-	// 2. Pick the format with the same pixelformat from the list of supported ones.
-	fmt->fmt.pix.field = 1;
-	fmt->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
-	fmt->fmt.pix.quantization = V4L2_QUANTIZATION_LIM_RANGE;
-	fmt->fmt.pix.xfer_func = V4L2_XFER_FUNC_SRGB;
+static int setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
+	uint32_t image_size = 0;
+	uint32_t bytes_per_line = 0;
 
 	switch (pixelformat) {
 		case V4L2_PIX_FMT_YUYV:
 			{
 				const int bits_per_pixel = 16;
-				fmt->fmt.pix.pixelformat = pixelformat;
-				fmt->fmt.pix.width = w;
-				fmt->fmt.pix.height = h;
-				fmt->fmt.pix.sizeimage = w * h * bits_per_pixel / 8;
-				fmt->fmt.pix.bytesperline = w * bits_per_pixel / 8;
-				return 0;
+				image_size = w * h * bits_per_pixel / 8;
+				bytes_per_line = w * bits_per_pixel / 8;
+				break;
 			}
-			break;
 		case V4L2_PIX_FMT_SBGGR10:
 		case V4L2_PIX_FMT_SGBRG10:
 		case V4L2_PIX_FMT_SGRBG10:
@@ -247,42 +188,49 @@ static int fillFormatInfo(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 		case V4L2_PIX_FMT_SRGGB14P:
 */
 			{
-
 				// w/2 * G + (w/2) * (R+B) 16bit samples
 				const int bits_per_pixel = 16;
-				fmt->fmt.pix.pixelformat = pixelformat;
-				fmt->fmt.pix.width = w;
-				fmt->fmt.pix.height = h;
-				fmt->fmt.pix.sizeimage = w * h * bits_per_pixel / 8;
-				fmt->fmt.pix.bytesperline = w * bits_per_pixel / 8;
-				return 0;
+				image_size = w * h * bits_per_pixel / 8;
+				bytes_per_line = w * bits_per_pixel / 8;
+				break;
 			}
-			break;
+		default:
+			LOGE("FIXME Yet unsupported format %s(%x)", v4l2PixFmtName(pixelformat), pixelformat);
+			return EINVAL;
 	}
 
-	return EINVAL;
+	if (IS_TYPE_MPLANE(fmt->type)) {
+		struct v4l2_pix_format *const pix = &fmt->fmt.pix;
+		pix->pixelformat = pixelformat;
+		pix->width = w;
+		pix->height = h;
+		pix->sizeimage = image_size;
+		pix->bytesperline = bytes_per_line;
+	} else {
+		struct v4l2_pix_format_mplane *const pix_mp = &fmt->fmt.pix_mp;
+		pix_mp->pixelformat = pixelformat;
+		pix_mp->width = w;
+		pix_mp->height = h;
+		pix_mp->num_planes = 1;
+		pix_mp->plane_fmt[0].sizeimage = image_size;
+		pix_mp->plane_fmt[0].bytesperline = bytes_per_line;
+	}
+
+	return 0;
 }
 
-static int endpontSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h) {
-	LOGI("Setting format for Devicestream=%s(%d)", v4l2BufTypeName(st->type), st->type);
-
-	if (IS_STREAM_MPLANE(st)) {
-		LOGE("%s: type=%s is multiplane and is not supported", __func__, v4l2BufTypeName(st->type));
-		return EINVAL;
-	}
-
-	if (0 != streamGetFormat(st, st->dev_fd))
-		return -1;
+static int streamSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h) {
+	LOGI("Setting format %s(%x) %dx%d for Devicestream=%s(%d)",
+		v4l2PixFmtName(pixelformat), pixelformat, w, h,
+		v4l2BufTypeName(st->type), st->type);
 
 	if (w == 0 && h == 0 && pixelformat == 0) {
 		return 0;
 	}
 
-	struct v4l2_format fmt = {
-		.type = st->type,
-	};
-
-	if (0 != fillFormatInfo(&fmt, pixelformat, w, h)) {
+	struct v4l2_format fmt = st->format;
+	ASSERT(fmt.type == st->type);
+	if (0 != setPixelFormat(&fmt, pixelformat, w, h)) {
 		LOGE("Unsupported pixel format %s(%#x)", v4l2PixFmtName(pixelformat), pixelformat);
 		LOGE("%s is not implemented == need bytesperline, sizeimage, mplanes compute code", __func__);
 		return EINVAL;
@@ -496,7 +444,7 @@ struct Device* deviceOpen(const char *devname) {
 		goto fail;
 	}
 
-	v4l2_enum_input(dev.fd);
+	//v4l2_enum_input(dev.fd);
 	v4l2_enum_controls_ext(dev.fd);
 
 	// TODO VIDIOC_ENUM_FRAMEINTERVALS
@@ -526,8 +474,59 @@ void deviceClose(struct Device* dev) {
 	free(dev);
 }
 
+int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
+	LOGI("Enumerating formats for type=%s(%x) mbus_code=%s(%x)",
+		v4l2BufTypeName(st->type), st->type,
+		v4l2MbusFmtName(mbus_code), mbus_code);
+	arrayResize(&st->formats);
+
+	for (int i = 0;; ++i) {
+		struct v4l2_fmtdesc fmt;
+		fmt.index = i;
+		fmt.type = st->type;
+		fmt.mbus_code = mbus_code;
+		if (0 != ioctl(st->dev_fd, VIDIOC_ENUM_FMT, &fmt)) {
+			if (EINVAL == errno) {
+				LOGI("Enumerated %d formats", i);
+				return 0;
+			}
+
+			if (ENOTTY == errno) {
+				LOGI("DeviceStream has no formats");
+				return 0;
+			}
+
+			LOGE("Failed to ioctl(%d, VIDIOC_ENUM_FMT): %d, %s", st->dev_fd, errno, strerror(errno));
+			return errno;
+		}
+
+		//v4l2PrintFormatDesc(&fmt);
+		LOGI("  fmt[%d] = {%s, %s}", i, v4l2PixFmtName(fmt.pixelformat), fmt.description);
+		v4l2PrintFormatFlags(fmt.flags);
+
+		// Enumerate possible sizes
+		for (int i = 0;; ++i) {
+			struct v4l2_frmsizeenum fse = { .index = i, .pixel_format = fmt.pixelformat };
+			if (0 != ioctl(st->dev_fd, VIDIOC_ENUM_FRAMESIZES, &fse)) {
+				if (EINVAL == errno) {
+					LOGI("  Format has %d framesizes", i);
+					break;
+				}
+			}
+
+			v4l2PrintFrmSizeEnum(&fse);
+
+			// Only discrete supports index > 0
+			if (fse.type != V4L2_FRMSIZE_TYPE_DISCRETE)
+				break;
+		}
+
+		arrayAppend(&st->formats, &fmt);
+	}
+}
+
 int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
-	if (0 != endpontSetFormat(st, opts->pixelformat, opts->width, opts->height)) {
+	if (0 != streamSetFormat(st, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
 

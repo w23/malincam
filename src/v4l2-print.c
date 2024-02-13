@@ -494,7 +494,7 @@ void v4l2PrintFormat(const struct v4l2_format* fmt) {
 			v4l2PrintPixFormatMPlane(&fmt->fmt.pix_mp);
 			break;
 		default:
-			LOGE("Unimplemented buffer format type");
+			LOGE("Unimplemented buffer format type %s(%x)", v4l2BufTypeName(fmt->type), fmt->type);
 	}
 }
 
