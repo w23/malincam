@@ -244,6 +244,8 @@ static int streamSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h)
 
 	// Remember as current format
 	st->format = fmt;
+	LOGI("Set format:");
+	v4l2PrintFormat(&st->format);
 
 	return 0;
 

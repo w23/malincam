@@ -1,4 +1,6 @@
 - [x] Get bayer images from sensor
+- [x] print out the format that has been set
+- [ ] name devices and streams
 - [ ] Buffer carousel: on each pad/endpoint have an outstanding buffer. It gets replaced any time a new buffer is
       dequeued. Similar with inverse direction: buffers returning from outside are written into a queue.
       - [ ] Q: how should it signal buffer availability in both ways, if the other side is idle and waiting?-
