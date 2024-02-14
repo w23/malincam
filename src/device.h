@@ -7,7 +7,7 @@
 
 typedef struct Buffer {
 	struct v4l2_buffer buffer;
-	void *mmap;
+	void *mapped[VIDEO_MAX_PLANES];
 	int dmabuf_fd[VIDEO_MAX_PLANES];
 } Buffer;
 

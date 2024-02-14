@@ -194,6 +194,13 @@ static int setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w, 
 				bytes_per_line = w * bits_per_pixel / 8;
 				break;
 			}
+
+		case V4L2_PIX_FMT_MJPEG:
+			{
+				image_size = 0;
+				bytes_per_line = 0;
+				break;
+			}
 		default:
 			LOGE("FIXME Yet unsupported format %s(%x)", v4l2PixFmtName(pixelformat), pixelformat);
 			return EINVAL;
@@ -317,18 +324,38 @@ static int bufferDmabufExport(DeviceStream *st, Buffer *const buf) {
 	return 0;
 }
 
+static int bufferMmap(DeviceStream *st, Buffer *const buf) {
+	if (IS_STREAM_MPLANE(st)) {
+		const int planes_num = st->format.fmt.pix_mp.num_planes;
+		ASSERT(planes_num < VIDEO_MAX_PLANES);
+
+		for (int i = 0; i < planes_num; ++i) {
+			const uint32_t offset = buf->buffer.m.planes[i].data_offset;
+			const uint32_t length = buf->buffer.m.planes[i].length;
+			buf->mapped[i] = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, offset);
+			const int err = errno;
+			if (buf->mapped == MAP_FAILED) {
+				// FIXME munmap already mmapped
+				LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
+				return err;
+			}
+		} // for planes
+	} else {
+		buf->mapped[0] = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, buf->buffer.m.offset);
+		const int err = errno;
+		if (buf->mapped == MAP_FAILED) {
+			LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
+			return err;
+		}
+	}
+
+	return 0;
+}
+
 static int bufferPrepare(DeviceStream *st, Buffer *const buf, buffer_memory_e buffer_memory) {
 	switch (buffer_memory) {
 		case BUFFER_MEMORY_MMAP:
-			{
-				buf->mmap = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, buf->buffer.m.offset);
-				const int err = errno;
-				if (buf->mmap == MAP_FAILED) {
-					LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
-					return err;
-				}
-				return 0;
-			}
+			return bufferMmap(st, buf);
 
 		case BUFFER_MEMORY_DMABUF_EXPORT:
 			return bufferDmabufExport(st, buf);
@@ -437,12 +464,14 @@ static int streamEnqueueBuffers(DeviceStream *st) {
 
 static void streamDestroy(DeviceStream *st) {
 	for (int i = 0; i < st->buffers_count; ++i) {
-		Buffer *const buf = st->buffers + i;
+		//Buffer *const buf = st->buffers + i;
 		switch (st->buffer_memory) {
 			case BUFFER_MEMORY_MMAP:
-				if (buf->mmap && 0 != munmap(buf->mmap, buf->buffer.length)) {
-					LOGE("munmap(%p) => %s (%d)", buf->mmap, strerror(errno), errno);
+				/* FIXME
+				if (buf->mapped && 0 != munmap(buf->mapped, buf->buffer.length)) {
+					LOGE("munmap(%p) => %s (%d)", buf->mapped, strerror(errno), errno);
 				}
+				*/
 				break;
 			case BUFFER_MEMORY_DMABUF_EXPORT:
 				/* FIXME
