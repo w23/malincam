@@ -36,10 +36,13 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 		1000000.f / dt_us);
 	prev_frame_us = now_us;
 
+	UNUSED(fout);
+	/* FIXME
 	if (frame_count == 0 && buf->buffer.bytesused != fwrite(buf->mapped[0], 1, buf->buffer.bytesused, fout)) {
 		LOGE("Failed to write %d bytes: %s (%d)", buf->buffer.bytesused, strerror(errno), errno);
 		return -2;
 	}
+	*/
 
 	frame_count++;
 
@@ -155,8 +158,8 @@ int main(int argc, const char *argv[]) {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
 		//.pixelformat = V4L2_PIX_FMT_YUYV,
-		//.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.pixelformat = V4L2_PIX_FMT_SRGGB10,
+		//.pixelformat = V4L2_PIX_FMT_SBGGR10,
 		.width = ss.width,
 		.height = ss.height,
 		//.userptr = NULL,
