@@ -536,9 +536,17 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 
 	switch (buf->memory) {
 		case V4L2_MEMORY_MMAP:
-			LOGI("  buf.m.offset = %d", buf->m.offset);
-			LOGI("  buf.m.userptr = %08lx", buf->m.userptr);
-			LOGI("  buf.m.fd = %d", buf->m.fd);
+			if (IS_TYPE_MPLANE(buf->type)) {
+				const int planes_num = 1; // TODO how to get it here?
+				for (int i = 0; i < planes_num; ++i) {
+					LOGI("  buf.m.planes[%d].mem_offset = %d", i, buf->m.planes[i].m.mem_offset);
+					LOGI("  buf.m.planes[%d].length = %d", i, buf->m.planes[i].length);
+				}
+			} else {
+				LOGI("  buf.m.offset = %d", buf->m.offset);
+				LOGI("  buf.m.length = %d", buf->length);
+				//LOGI("  buf.m.fd = %d", buf->m.fd);
+			}
 			//struct v4l2_plane *planes; // TODO
 			break;
 		case V4L2_MEMORY_USERPTR:

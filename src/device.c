@@ -43,9 +43,10 @@ static uint32_t v4l2ReadBufferTypeCapabilities(int fd, uint32_t buffer_type) {
 }
 
 static int streamInit(DeviceStream *st, int fd, uint32_t buffer_type) {
-	DeviceStream stream;
+	DeviceStream stream = {0};
 	stream.dev_fd = fd;
 	stream.type = buffer_type;
+	stream.state = STREAM_STATE_IDLE;
 
 	arrayInit(&stream.formats, struct v4l2_fmtdesc);
 
@@ -446,13 +447,7 @@ fail:
 
 static int streamEnqueueBuffers(DeviceStream *st) {
 	for (int i = 0; i < st->buffers_count; ++i) {
-		struct v4l2_buffer buf = {
-			.type = st->type,
-			.memory = st->buffers[0].buffer.memory, // TODO should it be set per-Devicestream globally?
-			.index = i,
-		};
-
-		if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &buf)) {
+		if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &st->buffers[i].buffer)) {
 			LOGE("Failed to ioctl(%d, VIDIOC_QBUF, %i): %d, %s",
 				st->dev_fd, i, errno, strerror(errno));
 			return -1;

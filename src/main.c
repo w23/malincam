@@ -36,8 +36,8 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 		1000000.f / dt_us);
 	prev_frame_us = now_us;
 
-	if (frame_count == 0 && buf->buffer.length != fwrite(buf->mapped[0], 1, buf->buffer.length, fout)) {
-		LOGE("Failed to write %d bytes: %s (%d)", buf->buffer.length, strerror(errno), errno);
+	if (frame_count == 0 && buf->buffer.bytesused != fwrite(buf->mapped[0], 1, buf->buffer.bytesused, fout)) {
+		LOGE("Failed to write %d bytes: %s (%d)", buf->buffer.bytesused, strerror(errno), errno);
 		return -2;
 	}
 
