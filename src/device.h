@@ -7,15 +7,16 @@
 
 typedef struct Buffer {
 	struct v4l2_buffer buffer;
-	union {
-		struct {
-			void *ptr;
-		} mmap;
-		struct {
-			int fd[VIDEO_MAX_PLANES];
-		} dmabuf;
-	} v;
+	void *mmap;
+	int dmabuf_fd[VIDEO_MAX_PLANES];
 } Buffer;
+
+typedef enum {
+	BUFFER_MEMORY_NONE,
+	BUFFER_MEMORY_MMAP,
+	BUFFER_MEMORY_DMABUF_EXPORT,
+	BUFFER_MEMORY_DMABUF_IMPORT,
+} buffer_memory_e;
 
 typedef enum {
 	STREAM_STATE_IDLE = 0,
@@ -34,6 +35,7 @@ typedef struct DeviceStream {
 
 	Array /*T(struct v4l2_fmtdesc)*/ formats;
 
+	buffer_memory_e buffer_memory;
 	struct Buffer *buffers;
 	int buffers_count;
 } DeviceStream;
@@ -61,8 +63,7 @@ struct Device* deviceOpen(const char *devname);
 void deviceClose(struct Device* dev);
 
 typedef struct DeviceStreamPrepareOpts {
-	uint32_t memory_type;
-
+	buffer_memory_e buffer_memory;
 	uint32_t buffers_count;
 
 	uint32_t pixelformat;

@@ -112,5 +112,7 @@ new+libcamera-meh: https://gitlab.freedesktop.org/camera/uvc-gadget/
 - [ ] Протрейсь usb-otg, почему там ошибки
 
 # ETC
-https://qengineering.eu/protect-the-raspberry-pi-4-sd-flashcard.html
+- https://qengineering.eu/protect-the-raspberry-pi-4-sd-flashcard.html
 
+- DMABUF export, kernel patching, etc: https://forums.raspberrypi.com/viewtopic.php?t=291940
+- Yet another V4L2 to OpenGL via DMABUF thread: https://forums.raspberrypi.com/viewtopic.php?f=68&t=281296&hilit=yavta

@@ -21,8 +21,8 @@ uint64_t nowUs(void) {
 static int frame_count = 0;
 static uint64_t prev_frame_us = 0;
 
-static int readFrame(DeviceStream *ep, FILE *fout) {
-	const Buffer *const buf = deviceStreamPullBuffer(ep);
+static int readFrame(DeviceStream *st, FILE *fout) {
+	const Buffer *const buf = deviceStreamPullBuffer(st);
 	// TODO differentiate between fatal and EAGAIN | EIO
 	if (!buf)
 		return 1;
@@ -36,14 +36,14 @@ static int readFrame(DeviceStream *ep, FILE *fout) {
 		1000000.f / dt_us);
 	prev_frame_us = now_us;
 
-	if (frame_count == 0 && buf->buffer.length != fwrite(buf->v.mmap.ptr, 1, buf->buffer.length, fout)) {
+	if (frame_count == 0 && buf->buffer.length != fwrite(buf->mmap, 1, buf->buffer.length, fout)) {
 		LOGE("Failed to write %d bytes: %s (%d)", buf->buffer.length, strerror(errno), errno);
 		return -2;
 	}
 
 	frame_count++;
 
-	if (0 != deviceStreamPushBuffer(ep, buf))
+	if (0 != deviceStreamPushBuffer(st, buf))
 		return -2;
 
 	return 0;
@@ -153,7 +153,7 @@ int main(int argc, const char *argv[]) {
 
 	const DeviceStreamPrepareOpts camera_capture_opts = {
 		.buffers_count = 3,
-		.memory_type = V4L2_MEMORY_DMABUF,
+		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
 		//.pixelformat = V4L2_PIX_FMT_YUYV,
 		//.pixelformat = V4L2_PIX_FMT_SRGGB10,
 		.pixelformat = V4L2_PIX_FMT_SBGGR10,
@@ -164,7 +164,7 @@ int main(int argc, const char *argv[]) {
 	};
 
 	if (0 != deviceStreamPrepare(&camera->capture, &camera_capture_opts)) {
-		LOGE("Unable to prepare camera capture stream");
+		LOGE("Unable to prepare camera:capture stream");
 		return 1;
 	}
 
@@ -181,7 +181,9 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	if (0 != deviceStreamPrepare(&debayer_isp->output, &camera_capture_opts)) {
+	DeviceStreamPrepareOpts debayer_output_opts = camera_capture_opts;
+	debayer_output_opts.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT;
+	if (0 != deviceStreamPrepare(&debayer_isp->output, &debayer_output_opts)) {
 		LOGE("Unable to prepare debayer:output stream");
 		return 1;
 	}
@@ -193,7 +195,7 @@ int main(int argc, const char *argv[]) {
 
 	const DeviceStreamPrepareOpts debayer_capture_opts = {
 		.buffers_count = 3,
-		.memory_type = V4L2_MEMORY_DMABUF,
+		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
 		.pixelformat = V4L2_PIX_FMT_YUYV,
 		.width = ss.width,
 		.height = ss.height,
@@ -239,7 +241,9 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	if (0 != deviceStreamPrepare(&encoder->output, &debayer_capture_opts)) {
+	DeviceStreamPrepareOpts encoder_output_opts = debayer_capture_opts;
+	encoder_output_opts.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT;
+	if (0 != deviceStreamPrepare(&encoder->output, &encoder_output_opts)) {
 		LOGE("Unable to prepare encoder output stream");
 		return 1;
 	}
@@ -251,7 +255,7 @@ int main(int argc, const char *argv[]) {
 
 	const DeviceStreamPrepareOpts encoder_capture_opts = {
 		.buffers_count = 3,
-		.memory_type = V4L2_MEMORY_MMAP,
+		.buffer_memory = BUFFER_MEMORY_MMAP,
 		.pixelformat = V4L2_PIX_FMT_MJPEG,
 		.width = ss.width,
 		.height = ss.height,

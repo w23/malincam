@@ -286,6 +286,7 @@ static int bufferExportDmabufFd(int fd, uint32_t buf_type, uint32_t index, uint3
 		.type = buf_type,
 		.index = index,
 		.plane = plane,
+		.flags = O_CLOEXEC | O_RDONLY,
 	};
 
 	if (0 != ioctl(fd, VIDIOC_EXPBUF, &exp)) {
@@ -310,31 +311,30 @@ static int bufferDmabufExport(DeviceStream *st, Buffer *const buf) {
 			return -fd;
 		}
 
-		buf->v.dmabuf.fd[i] = fd;
+		buf->dmabuf_fd[i] = fd;
 	}
 
 	return 0;
 }
 
-static int bufferPrepare(DeviceStream *st, Buffer *const buf) {
-	switch (buf->buffer.memory) {
-		case V4L2_MEMORY_MMAP:
+static int bufferPrepare(DeviceStream *st, Buffer *const buf, buffer_memory_e buffer_memory) {
+	switch (buffer_memory) {
+		case BUFFER_MEMORY_MMAP:
 			{
-				buf->v.mmap.ptr = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, buf->buffer.m.offset);
+				buf->mmap = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, buf->buffer.m.offset);
 				const int err = errno;
-				if (buf->v.mmap.ptr == MAP_FAILED) {
+				if (buf->mmap == MAP_FAILED) {
 					LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
 					return err;
 				}
-
 				return 0;
 			}
 
-		case V4L2_MEMORY_DMABUF:
-			// Export DMABUF fds if this is a capture stream
-			if (IS_STREAM_CAPTURE(st)) {
-				return bufferDmabufExport(st, buf);
-			}
+		case BUFFER_MEMORY_DMABUF_EXPORT:
+			return bufferDmabufExport(st, buf);
+
+		case BUFFER_MEMORY_DMABUF_IMPORT:
+			// Nothing to do, fds will be provided externally
 			return 0;
 
 		default:
@@ -345,14 +345,26 @@ static int bufferPrepare(DeviceStream *st, Buffer *const buf) {
 	return EINVAL;
 }
 
-static int streamRequestBuffers(DeviceStream *st, uint32_t count, uint32_t memory_type) {
+static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_e buffer_memory) {
 	// TODO check if anything changed that require buffer request?
 	// - frame size, pixelformat, etc
 
 	struct v4l2_requestbuffers req = {0};
 	req.type = st->type;
 	req.count = count;
-	req.memory = memory_type;
+	switch (buffer_memory) {
+		case BUFFER_MEMORY_MMAP:
+		case BUFFER_MEMORY_DMABUF_EXPORT:
+			req.memory = V4L2_MEMORY_MMAP;
+			break;
+		case BUFFER_MEMORY_DMABUF_IMPORT:
+			req.memory = V4L2_MEMORY_DMABUF;
+			break;
+		default:
+			LOGE("Invalid buffer memory type %08x", buffer_memory);
+			return EINVAL;
+	}
+
 	LOGI("Requesting buffers: ");
 	v4l2PrintRequestBuffers(&req);
 	if (0 != ioctl(st->dev_fd, VIDIOC_REQBUFS, &req)) {
@@ -388,12 +400,13 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, uint32_t memor
 		LOGI("Queried buffer %d:", i);
 		v4l2PrintBuffer(&buf->buffer);
 
-		if (0 != bufferPrepare(st, buf)) {
+		if (0 != bufferPrepare(st, buf, buffer_memory)) {
 			LOGE("Error preparing buffer %d", i);
 			goto fail;
 		}
 	} // for st->buffers_count
 
+	st->buffer_memory = buffer_memory;
 	return 0;
 
 fail:
@@ -425,11 +438,25 @@ static int streamEnqueueBuffers(DeviceStream *st) {
 static void streamDestroy(DeviceStream *st) {
 	for (int i = 0; i < st->buffers_count; ++i) {
 		Buffer *const buf = st->buffers + i;
-		switch (buf->buffer.memory) {
-			case V4L2_MEMORY_MMAP:
-				if (buf->v.mmap.ptr && 0 != munmap(buf->v.mmap.ptr, buf->buffer.length)) {
-					LOGE("munmap(%p) => %s (%d)", buf->v.mmap.ptr, strerror(errno), errno);
+		switch (st->buffer_memory) {
+			case BUFFER_MEMORY_MMAP:
+				if (buf->mmap && 0 != munmap(buf->mmap, buf->buffer.length)) {
+					LOGE("munmap(%p) => %s (%d)", buf->mmap, strerror(errno), errno);
 				}
+				break;
+			case BUFFER_MEMORY_DMABUF_EXPORT:
+				/* FIXME
+				{
+					const int planes_num = streamPlanesNum(st);
+					for (int i = 0; i < planes_num; ++i) {
+						close(buf->dmabuf_fd[i]);
+					}
+				}*/
+				break;
+
+			case BUFFER_MEMORY_NONE:
+			case BUFFER_MEMORY_DMABUF_IMPORT:
+				// Nothing to do
 				break;
 		}
 	}
@@ -541,7 +568,7 @@ int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
 		return -1;
 	}
 
-	if (0 != streamRequestBuffers(st, opts->buffers_count, opts->memory_type)) {
+	if (0 != streamRequestBuffers(st, opts->buffers_count, opts->buffer_memory)) {
 		return -2;
 	}
 
