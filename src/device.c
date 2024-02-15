@@ -662,6 +662,8 @@ int deviceStreamPushBuffer(DeviceStream *st, const Buffer *buf) {
 	if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
 			st->dev_fd, errno, strerror(errno));
+		LOGE("Buffer was:");
+		v4l2PrintBuffer(&buf->buffer);
 		return errno;
 	}
 

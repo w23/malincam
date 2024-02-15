@@ -107,11 +107,14 @@ static void run(int frames) {
 	g.frame = 0;
 	while (frame_count < frames) {
 		g.signaled_fds = 0;
+		const uint64_t poll_pre = nowUs();
 		const int result = pollinatorPoll(&pol, 5000);
+		const uint64_t poll_after = nowUs();
 		if (result < 0) {
 			LOGE("Pollinator returned %d", result);
 			exit(1);
 		}
+		LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
 
 		for (int i = 0, bit = 1; i < 2; ++i, bit <<= 1) {
 			if (0 == (bit & g.signaled_fds))

@@ -5,9 +5,10 @@
 
 static int passDmabufMP(const Buffer *src, Buffer *dst, int planes_count) {
 	for (int i = 0; i < planes_count; ++i) {
-		//dst->buffer.m.planes[i].length = src->buffer.m.planes[i].length;
+		dst->buffer.m.planes[i].length = src->buffer.m.planes[i].length;
+		dst->buffer.m.planes[i].data_offset = src->buffer.m.planes[i].data_offset;
 		dst->buffer.m.planes[i].bytesused = src->buffer.m.planes[i].bytesused;
-		dst->buffer.m.planes[i].m.fd = src->buffer.m.planes[i].m.fd;
+		dst->buffer.m.planes[i].m.fd = src->dmabuf_fd[i];
 	}
 
 	return 0;
@@ -16,9 +17,10 @@ static int passDmabufMP(const Buffer *src, Buffer *dst, int planes_count) {
 static int passDmabufSPtoMP(const Buffer *src, Buffer *dst, int planes_count) {
 	UNUSED(planes_count);
 
-	//dst->buffer.m.planes[0].length = src->buffer.length;
+	dst->buffer.m.planes[0].length = src->buffer.length;
+	dst->buffer.m.planes[0].data_offset = 0;
 	dst->buffer.m.planes[0].bytesused = src->buffer.bytesused;
-	dst->buffer.m.planes[0].m.fd = src->buffer.m.fd;
+	dst->buffer.m.planes[0].m.fd = src->dmabuf_fd[0];
 
 	return 0;
 }
@@ -26,9 +28,11 @@ static int passDmabufSPtoMP(const Buffer *src, Buffer *dst, int planes_count) {
 static int passDmabufMPtoSP(const Buffer *src, Buffer *dst, int planes_count) {
 	UNUSED(planes_count);
 
-	//dst->buffer.length = src->buffer.m.planes[0].length;
+	dst->buffer.length = src->buffer.m.planes[0].length;
+	// FIXME this is impossible dst->buffer.data_offset = src->buffer.m.planes[0].data_offset;
+	// FIXME detect and complain
 	dst->buffer.bytesused = src->buffer.m.planes[0].bytesused;
-	dst->buffer.m.fd = src->buffer.m.planes[0].m.fd;
+	dst->buffer.m.fd = src->dmabuf_fd[0];
 
 	return 0;
 }
@@ -36,9 +40,9 @@ static int passDmabufMPtoSP(const Buffer *src, Buffer *dst, int planes_count) {
 static int passDmabufSP(const Buffer *src, Buffer *dst, int planes_count) {
 	UNUSED(planes_count);
 
-	//dst->buffer.length = src->buffer.length;
+	dst->buffer.length = src->buffer.length;
 	dst->buffer.bytesused = src->buffer.bytesused;
-	dst->buffer.m.fd = src->buffer.m.fd;
+	dst->buffer.m.fd = src->dmabuf_fd[0];
 
 	return 0;
 }
@@ -93,6 +97,8 @@ Pump *pumpCreate(DeviceStream *src, DeviceStream *dst) {
 		pump->dst.acquired_to_source[i] = -1;
 
 	queueInit(&pump->dst.available, sizeof(int), pump->dst.st->buffers_count);
+	for (int i = 0; i < pump->dst.st->buffers_count; ++i)
+		queuePush(&pump->dst.available, &i);
 
 	pump->buffer_pass_func = pass_func;
 	pump->planes_count = STREAM_PLANES_COUNT(src);

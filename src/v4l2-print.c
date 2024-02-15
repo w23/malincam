@@ -539,18 +539,35 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 			if (IS_TYPE_MPLANE(buf->type)) {
 				const int planes_num = 1; // TODO how to get it here?
 				for (int i = 0; i < planes_num; ++i) {
-					LOGI("  buf.m.planes[%d].mem_offset = %d", i, buf->m.planes[i].m.mem_offset);
+					LOGI("  buf.m.planes[%d].bytesused = %d", i, buf->m.planes[i].bytesused);
 					LOGI("  buf.m.planes[%d].length = %d", i, buf->m.planes[i].length);
+					LOGI("  buf.m.planes[%d].m.mem_offset = %d", i, buf->m.planes[i].m.mem_offset);
+					LOGI("  buf.m.planes[%d].data_offset = %d", i, buf->m.planes[i].data_offset);
 				}
 			} else {
 				LOGI("  buf.m.offset = %d", buf->m.offset);
-				LOGI("  buf.m.length = %d", buf->length);
+				LOGI("  buf.length = %d", buf->length);
 				//LOGI("  buf.m.fd = %d", buf->m.fd);
 			}
 			//struct v4l2_plane *planes; // TODO
 			break;
-		case V4L2_MEMORY_USERPTR:
+
 		case V4L2_MEMORY_DMABUF:
+			if (IS_TYPE_MPLANE(buf->type)) {
+				const int planes_num = 1; // TODO how to get it here?
+				for (int i = 0; i < planes_num; ++i) {
+					LOGI("  buf.m.planes[%d].bytesused = %d", i, buf->m.planes[i].bytesused);
+					LOGI("  buf.m.planes[%d].length = %d", i, buf->m.planes[i].length);
+					LOGI("  buf.m.planes[%d].m.fd = %d", i, buf->m.planes[i].m.fd);
+					LOGI("  buf.m.planes[%d].data_offset = %d", i, buf->m.planes[i].data_offset);
+				}
+			} else {
+				LOGI("  buf.m.fd = %d", buf->m.fd);
+				LOGI("  buf.length = %d", buf->length);
+			}
+			//struct v4l2_plane *planes; // TODO
+			break;
+		case V4L2_MEMORY_USERPTR:
 		case V4L2_MEMORY_OVERLAY:
 			break;
 	}
