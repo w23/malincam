@@ -49,6 +49,9 @@ typedef struct DeviceStream {
 #define IS_STREAM_MPLANE(st) IS_TYPE_MPLANE((st)->type)
 #define IS_STREAM_CAPTURE(st) IS_TYPE_CAPTURE((st)->type)
 
+#define STREAM_PLANES_COUNT(st) \
+	(IS_STREAM_MPLANE(st) ? (st)->format.fmt.pix_mp.num_planes : 1)
+
 typedef struct Device {
 	int fd;
 	char *name;

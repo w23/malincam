@@ -3,21 +3,47 @@
 
 #include <stdlib.h>
 
-static int passDmabuf(const Buffer *src, Buffer *dst, int planes_count) {
-	// TODO support single plane, etc
-	ASSERT(IS_TYPE_MPLANE(src->buffer.type));
-	ASSERT(IS_TYPE_MPLANE(dst->buffer.type));
-
+static int passDmabufMP(const Buffer *src, Buffer *dst, int planes_count) {
 	for (int i = 0; i < planes_count; ++i) {
-		dst->buffer.m.planes[i].length = dst->buffer.m.planes[i].length;
-		dst->buffer.m.planes[i].bytesused = dst->buffer.m.planes[i].bytesused;
-		dst->buffer.m.planes[i].m.fd = dst->buffer.m.planes[i].m.fd;
+		//dst->buffer.m.planes[i].length = src->buffer.m.planes[i].length;
+		dst->buffer.m.planes[i].bytesused = src->buffer.m.planes[i].bytesused;
+		dst->buffer.m.planes[i].m.fd = src->buffer.m.planes[i].m.fd;
 	}
 
 	return 0;
 }
 
-Pump *pumpCreate(DeviceStream *src, DeviceStream *dst) {
+static int passDmabufSPtoMP(const Buffer *src, Buffer *dst, int planes_count) {
+	UNUSED(planes_count);
+
+	//dst->buffer.m.planes[0].length = src->buffer.length;
+	dst->buffer.m.planes[0].bytesused = src->buffer.bytesused;
+	dst->buffer.m.planes[0].m.fd = src->buffer.m.fd;
+
+	return 0;
+}
+
+static int passDmabufMPtoSP(const Buffer *src, Buffer *dst, int planes_count) {
+	UNUSED(planes_count);
+
+	//dst->buffer.length = src->buffer.m.planes[0].length;
+	dst->buffer.bytesused = src->buffer.m.planes[0].bytesused;
+	dst->buffer.m.fd = src->buffer.m.planes[0].m.fd;
+
+	return 0;
+}
+
+static int passDmabufSP(const Buffer *src, Buffer *dst, int planes_count) {
+	UNUSED(planes_count);
+
+	//dst->buffer.length = src->buffer.length;
+	dst->buffer.bytesused = src->buffer.bytesused;
+	dst->buffer.m.fd = src->buffer.m.fd;
+
+	return 0;
+}
+
+static buffer_pass_func *getPassFunc(const DeviceStream *src, const DeviceStream *dst) {
 	if (src->buffer_memory != BUFFER_MEMORY_DMABUF_EXPORT) {
 		LOGE("Pump only supports DMABUF export as a source");
 		return NULL;
@@ -27,16 +53,33 @@ Pump *pumpCreate(DeviceStream *src, DeviceStream *dst) {
 		LOGE("Pump only supports DMABUF import as a destination");
 		return NULL;
 	}
+	
 
 	// FIXME verify plane compatibility
-	if (!IS_TYPE_MPLANE(src->type) || !IS_TYPE_MPLANE(dst->type)) {
-		LOGE("For now both src and dst should be MPLANE");
+	const int src_planes = STREAM_PLANES_COUNT(src);
+	const int dst_planes = STREAM_PLANES_COUNT(src);
+	if (src_planes != dst_planes) {
+		LOGE("Incompatible number of planes: src=%d dst=%d", src_planes, dst_planes);
 		return NULL;
 	}
 
-	if (src->format.fmt.pix_mp.num_planes != dst->format.fmt.pix_mp.num_planes) {
-		LOGE("Incompatible number of planes: src=%d dst=%d",
-			src->format.fmt.pix_mp.num_planes, dst->format.fmt.pix_mp.num_planes);
+	const int src_mp = !!IS_STREAM_MPLANE(src);
+	const int dst_mp = !!IS_STREAM_MPLANE(dst);
+	
+	buffer_pass_func *const table[] = {
+		passDmabufSP,
+		passDmabufSPtoMP,
+		passDmabufMPtoSP,
+		passDmabufMP
+	};
+
+	return table[src_mp * 2 + dst_mp];
+}
+
+Pump *pumpCreate(DeviceStream *src, DeviceStream *dst) {
+	buffer_pass_func *const pass_func = getPassFunc(src, dst);
+	if (!pass_func) {
+		LOGE("Unable to find a suitable buffer passing func for given src and dst streams");
 		return NULL;
 	}
 
@@ -51,8 +94,8 @@ Pump *pumpCreate(DeviceStream *src, DeviceStream *dst) {
 
 	queueInit(&pump->dst.available, sizeof(int), pump->dst.st->buffers_count);
 
-	pump->buffer_pass_func = &passDmabuf;
-	pump->planes_count = src->format.fmt.pix_mp.num_planes;
+	pump->buffer_pass_func = pass_func;
+	pump->planes_count = STREAM_PLANES_COUNT(src);
 	return pump;
 }
 
