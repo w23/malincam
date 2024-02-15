@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h> // NULL
+
 /* TODO
 #define ArrayT(T) struct { \
 	T *data; \

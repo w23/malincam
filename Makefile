@@ -31,8 +31,11 @@ $(OBJDIR)/%.c.o: %.c
 	$(COMPILE.c) -c $< -o $@
 
 SOURCES += \
-	src/main.c \
 	src/device.c \
+	src/main.c \
+	src/pollinator.c \
+	src/pump.c \
+	src/queue.c \
 	src/subdev.c \
 	src/v4l2-print.c \
 
