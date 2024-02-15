@@ -637,15 +637,25 @@ const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
 	if (st->state != STREAM_STATE_STREAMING)
 		return NULL;
 
+	struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
+
 	struct v4l2_buffer buf = {
 		.type = st->type,
 		.memory = st->buffers[0].buffer.memory,
 	};
 
+	// LOL this isn't really documented, right?
+	if (IS_STREAM_MPLANE(st)) {
+		buf.length = VIDEO_MAX_PLANES;
+		buf.m.planes = planes;
+	}
+
 	if (0 != ioctl(st->dev_fd, VIDIOC_DQBUF, &buf)) {
 		if (errno != EAGAIN) {
 			LOGE("Failed to ioctl(%d, VIDIOC_DQBUF): %d, %s",
 				st->dev_fd, errno, strerror(errno));
+			LOGE("Buffer was:");
+			v4l2PrintBuffer(&buf);
 		}
 
 		return NULL;
