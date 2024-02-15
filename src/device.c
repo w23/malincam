@@ -651,7 +651,7 @@ const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
 	}
 
 	if (0 != ioctl(st->dev_fd, VIDIOC_DQBUF, &buf)) {
-		if (errno != EAGAIN) {
+		if (errno != EAGAIN /* FIXME: */ && errno != EPIPE) {
 			LOGE("Failed to ioctl(%d, VIDIOC_DQBUF): %d, %s",
 				st->dev_fd, errno, strerror(errno));
 			LOGE("Buffer was:");

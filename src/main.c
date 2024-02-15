@@ -29,17 +29,24 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 	if (!buf)
 		return 1;
 
+	v4l2PrintBuffer(&buf->buffer);
+
+	const uint32_t offset = 0; // TODO ... IS_STREAM_MPLANE(st) ? buf->buffer.m.planes[0].m.data_offset : 0;
+	const uint32_t length = IS_STREAM_MPLANE(st) ? buf->buffer.m.planes[0].bytesused : buf->buffer.bytesused;
+
 	const uint64_t now_us = nowUs();
 	const uint64_t dt_us = now_us - prev_frame_us;
-	LOGI("Frame %d, time=%.3fms, dt=%fms, fps=%fms",
+	LOGI("Frame %d (map=%p off=%d size=%d), time=%.3fms, dt=%fms, fps=%fms",
 		frame_count,
+		buf->mapped[0],
+		offset, length,
 		now_us / 1000.f,
 		dt_us / 1000.f,
 		1000000.f / dt_us);
 	prev_frame_us = now_us;
 
-	if (frame_count == 0 && buf->buffer.bytesused != fwrite(buf->mapped[0], 1, buf->buffer.bytesused, fout)) {
-		LOGE("Failed to write %d bytes: %s (%d)", buf->buffer.bytesused, strerror(errno), errno);
+	if (frame_count == 0 && length != fwrite(buf->mapped[0], 1, length, fout)) {
+		LOGE("Failed to write %d bytes: %s (%d)", length, strerror(errno), errno);
 		return -2;
 	}
 
@@ -105,7 +112,7 @@ static void run(int frames) {
 
 	prev_frame_us = nowUs();
 	g.frame = 0;
-	while (frame_count < frames) {
+	while (frames > 0) {
 		g.signaled_fds = 0;
 		const uint64_t poll_pre = nowUs();
 		const int result = pollinatorPoll(&pol, 5000);
@@ -123,6 +130,8 @@ static void run(int frames) {
 			if (i == 0) pumpPump(g.cam2debay);
 			else if (i == 1) pumpPump(g.debay2enc);
 		}
+
+		--frames;
 	}
 }
 
