@@ -331,11 +331,11 @@ static int bufferMmap(DeviceStream *st, Buffer *const buf) {
 		ASSERT(planes_num < VIDEO_MAX_PLANES);
 
 		for (int i = 0; i < planes_num; ++i) {
-			const uint32_t offset = buf->buffer.m.planes[i].data_offset;
+			const uint32_t offset = buf->buffer.m.planes[i].m.mem_offset;
 			const uint32_t length = buf->buffer.m.planes[i].length;
 			buf->mapped[i] = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, offset);
 			const int err = errno;
-			if (buf->mapped == MAP_FAILED) {
+			if (buf->mapped[i] == MAP_FAILED) {
 				// FIXME munmap already mmapped
 				LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
 				return err;
