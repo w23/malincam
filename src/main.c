@@ -64,7 +64,8 @@ struct Chain {
 
 static struct {
 	Device *camera;
-	Device *debayer_isp;
+	Device *isp_out;
+	Device *isp_cap;
 	Device *encoder;
 
 	Pump *cam2debay;
@@ -83,7 +84,7 @@ static int pumpSignalFunc(void *userptr, int fd, uint32_t flags) {
 		exit(1);
 	}
 
-	LOGI("fd=%d wakes up, setting bit=%x", fd, bit);
+	LOGI("fd=%d wakes up flags=%x, setting bit=%x", fd, flags, bit);
 	g.signaled_fds |= bit;
 
 	if (fd == g.encoder->fd) {
@@ -97,11 +98,12 @@ static void run(int frames) {
 	Pollinator pol;
 	pollinatorInit(&pol);
 	pollinatorRegisterFd(&pol, g.camera->fd, (void*)(uintptr_t)(1<<0), pumpSignalFunc);
-	pollinatorRegisterFd(&pol, g.debayer_isp->fd, (void*)(uintptr_t)(1<<1), pumpSignalFunc);
-	pollinatorRegisterFd(&pol, g.encoder->fd, (void*)(uintptr_t)(1<<2), pumpSignalFunc);
+	pollinatorRegisterFd(&pol, g.isp_out->fd, (void*)(uintptr_t)(1<<0), pumpSignalFunc);
+	pollinatorRegisterFd(&pol, g.isp_cap->fd, (void*)(uintptr_t)(1<<1), pumpSignalFunc);
+	pollinatorRegisterFd(&pol, g.encoder->fd, (void*)(uintptr_t)(1<<1), pumpSignalFunc);
 
-	g.cam2debay = pumpCreate(&g.camera->capture, &g.debayer_isp->output);
-	g.debay2enc = pumpCreate(&g.debayer_isp->capture, &g.encoder->output);
+	g.cam2debay = pumpCreate(&g.camera->capture, &g.isp_out->output);
+	g.debay2enc = pumpCreate(&g.isp_cap->capture, &g.encoder->output);
 
 	const char *out_filename = "frames.mjpeg";
 	g.fout = fopen(out_filename, "wb");
@@ -123,13 +125,11 @@ static void run(int frames) {
 		}
 		LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
 
-		for (int i = 0, bit = 1; i < 2; ++i, bit <<= 1) {
-			if (0 == (bit & g.signaled_fds))
-				continue;
+		if (g.signaled_fds & 1)
+			pumpPump(g.cam2debay);
 
-			if (i == 0) pumpPump(g.cam2debay);
-			else if (i == 1) pumpPump(g.debay2enc);
-		}
+		if (g.signaled_fds & 2)
+			pumpPump(g.debay2enc);
 
 		--frames;
 	}
@@ -137,7 +137,8 @@ static void run(int frames) {
 
 #define SENSOR_SUBDEV "/dev/v4l-subdev0"
 #define CAMERA_DEV "/dev/video0"
-#define DEBAYER_ISP_DEV "/dev/video12"
+#define DEBAYER_ISP_OUT_DEV "/dev/video13"
+#define DEBAYER_ISP_CAP_DEV "/dev/video14"
 #define ENCODER_DEV "/dev/video11"
 
 int main(int argc, const char *argv[]) {
@@ -203,26 +204,31 @@ int main(int argc, const char *argv[]) {
 
 	// 3. Open Bayer to YUV encoder
 	// /dev/video12 ?
-	g.debayer_isp = deviceOpen(DEBAYER_ISP_DEV);
-	if (!g.debayer_isp) {
-		LOGE("Failed to open debayer isp device");
+	g.isp_out= deviceOpen(DEBAYER_ISP_OUT_DEV);
+	if (!g.isp_out) {
+		LOGE("Failed to open isp_out device");
 		return 1;
 	}
 
-	if (0 != deviceStreamQueryFormats(&g.debayer_isp->output, 0)) {
-		LOGE("Failed to query debayer:output stream formats");
+	if (0 != deviceStreamQueryFormats(&g.isp_out->output, 0)) {
+		LOGE("Failed to query isp_out:output stream formats");
 		return 1;
 	}
 
 	DeviceStreamPrepareOpts debayer_output_opts = camera_capture_opts;
 	debayer_output_opts.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT;
-	if (0 != deviceStreamPrepare(&g.debayer_isp->output, &debayer_output_opts)) {
-		LOGE("Unable to prepare debayer:output stream");
+	if (0 != deviceStreamPrepare(&g.isp_out->output, &debayer_output_opts)) {
+		LOGE("Unable to prepare isp_out:output stream");
 		return 1;
 	}
 
-	if (0 != deviceStreamQueryFormats(&g.debayer_isp->capture, 0)) {
-		LOGE("Failed to query debayer:capture stream formats");
+	g.isp_cap= deviceOpen(DEBAYER_ISP_CAP_DEV);
+	if (!g.isp_cap) {
+		LOGE("Failed to open isp_cap device");
+		return 1;
+	}
+	if (0 != deviceStreamQueryFormats(&g.isp_cap->capture, 0)) {
+		LOGE("Failed to query iso_cap:capture stream formats");
 		return 1;
 	}
 
@@ -236,8 +242,8 @@ int main(int argc, const char *argv[]) {
 		//.buffer_func = NULL,
 	};
 
-	if (0 != deviceStreamPrepare(&g.debayer_isp->capture, &debayer_capture_opts)) {
-		LOGE("Unable to prepare debayer capture stream");
+	if (0 != deviceStreamPrepare(&g.isp_cap->capture, &debayer_capture_opts)) {
+		LOGE("Unable to prepare isp_cap:capture stream");
 		return 1;
 	}
 
@@ -311,11 +317,11 @@ int main(int argc, const char *argv[]) {
 		LOGE("Unable to start encoder:output");
 		return 1;
 	}
-	if (0 != deviceStreamStart(&g.debayer_isp->capture)) {
+	if (0 != deviceStreamStart(&g.isp_cap->capture)) {
 		LOGE("Unable to start debayer:capture");
 		return 1;
 	}
-	if (0 != deviceStreamStart(&g.debayer_isp->output)) {
+	if (0 != deviceStreamStart(&g.isp_out->output)) {
 		LOGE("Unable to start debayer:output");
 		return 1;
 	}
@@ -327,13 +333,14 @@ int main(int argc, const char *argv[]) {
 	run(60);
 
 	deviceStreamStop(&g.camera->capture);
-	deviceStreamStop(&g.debayer_isp->output);
-	deviceStreamStop(&g.debayer_isp->capture);
+	deviceStreamStop(&g.isp_out->output);
+	deviceStreamStop(&g.isp_cap->capture);
 	deviceStreamStop(&g.encoder->output);
 	deviceStreamStop(&g.encoder->capture);
 
 	deviceClose(g.encoder);
-	deviceClose(g.debayer_isp);
+	deviceClose(g.isp_cap);
+	deviceClose(g.isp_out);
 	deviceClose(g.camera);
 	subdevClose(sensor);
 	return 0;
