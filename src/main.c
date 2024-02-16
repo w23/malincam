@@ -29,7 +29,7 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 	if (!buf)
 		return 1;
 
-	v4l2PrintBuffer(&buf->buffer);
+	//v4l2PrintBuffer(&buf->buffer);
 
 	const uint32_t offset = 0; // TODO ... IS_STREAM_MPLANE(st) ? buf->buffer.m.planes[0].m.data_offset : 0;
 	const uint32_t length = IS_STREAM_MPLANE(st) ? buf->buffer.m.planes[0].bytesused : buf->buffer.bytesused;
@@ -84,7 +84,7 @@ static int pumpSignalFunc(void *userptr, int fd, uint32_t flags) {
 		exit(1);
 	}
 
-	LOGI("fd=%d wakes up flags=%x, setting bit=%x", fd, flags, bit);
+	//LOGI("fd=%d wakes up flags=%x, setting bit=%x", fd, flags, bit);
 	g.signaled_fds |= bit;
 
 	if (fd == g.encoder->fd) {
@@ -114,16 +114,18 @@ static void run(int frames) {
 
 	prev_frame_us = nowUs();
 	g.frame = 0;
-	while (frames > 0) {
+	//while (frames > 0) { --frames;
+	while (frame_count < frames) {
 		g.signaled_fds = 0;
-		const uint64_t poll_pre = nowUs();
+		//const uint64_t poll_pre = nowUs();
 		const int result = pollinatorPoll(&pol, 5000);
-		const uint64_t poll_after = nowUs();
+		//const uint64_t poll_after = nowUs();
+		//LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+
 		if (result < 0) {
 			LOGE("Pollinator returned %d", result);
 			exit(1);
 		}
-		LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
 
 		if (g.signaled_fds & 1)
 			pumpPump(g.cam2debay);
@@ -131,8 +133,9 @@ static void run(int frames) {
 		if (g.signaled_fds & 2)
 			pumpPump(g.debay2enc);
 
-		--frames;
 	}
+
+	fclose(g.fout);
 }
 
 #define SENSOR_SUBDEV "/dev/v4l-subdev0"
@@ -189,8 +192,8 @@ int main(int argc, const char *argv[]) {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
 		//.pixelformat = V4L2_PIX_FMT_YUYV,
-		.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		//.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		//.pixelformat = V4L2_PIX_FMT_SRGGB10,
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
 		.width = ss.width,
 		.height = ss.height,
 		//.userptr = NULL,
@@ -330,7 +333,9 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	run(60);
+	int max_frames = argc > 1 ? atoi(argv[1]) : 60;
+	max_frames = max_frames > 0 ? max_frames : 60;
+	run(max_frames);
 
 	deviceStreamStop(&g.camera->capture);
 	deviceStreamStop(&g.isp_out->output);

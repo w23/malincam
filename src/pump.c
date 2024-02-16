@@ -169,6 +169,13 @@ int pumpPump(Pump *pump /* TODO, uint32_t hint*/) {
 		return result;
 	}
 
+	/*
+	LOGI("FROM BUF");
+	v4l2PrintBuffer(&sbuf->buffer);
+	LOGI("TO BUF");
+	v4l2PrintBuffer(&dbuf->buffer);
+	*/
+
 	result = deviceStreamPushBuffer(pump->dst.st, dbuf);
 	if (result != 0) {
 		LOGE("Unable to pass buffer to dst");
