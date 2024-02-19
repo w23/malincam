@@ -45,7 +45,7 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 		1000000.f / dt_us);
 	prev_frame_us = now_us;
 
-	if (frame_count == 0 && length != fwrite(buf->mapped[0], 1, length, fout)) {
+	if (length != fwrite(buf->mapped[0], 1, length, fout)) {
 		LOGE("Failed to write %d bytes: %s (%d)", length, strerror(errno), errno);
 		return -2;
 	}
@@ -127,8 +127,6 @@ static void run(int frames) {
 			pumpPump(g.debay2enc);
 
 	}
-
-	fclose(g.fout);
 }
 
 #define SENSOR_SUBDEV "/dev/v4l-subdev0"
@@ -147,6 +145,12 @@ int main(int argc, const char *argv[]) {
 	}
 
 	const char *out_filename = argv[1];
+
+	g.fout = fopen(out_filename, "wb");
+	if (!g.fout) {
+		LOGE("fopen(\"%s\") => %s (%d)", out_filename, strerror(errno), errno);
+		return -1;
+	}
 
 	// 1. Set pixel format and resolution on the sensor subdevice
 	Subdev *const sensor = subdevOpen(SENSOR_SUBDEV, 2);
@@ -300,7 +304,6 @@ int main(int argc, const char *argv[]) {
 	}
 
 	// N. Start streaming
-
 	if (0 != deviceStreamStart(&g.encoder->capture)) {
 		LOGE("Unable to start encoder:capture");
 		return 1;
@@ -322,15 +325,11 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	g.fout = fopen(out_filename, "wb");
-	if (!g.fout) {
-		LOGE("fopen(\"%s\") => %s (%d)", out_filename, strerror(errno), errno);
-		return -1;
-	}
-
 	int max_frames = argc > 2 ? atoi(argv[2]) : 60;
 	max_frames = max_frames >= 0 ? max_frames : 60;
 	run(max_frames);
+
+	fclose(g.fout);
 
 	deviceStreamStop(&g.camera->capture);
 	deviceStreamStop(&g.isp_out->output);
