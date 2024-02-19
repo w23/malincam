@@ -238,7 +238,8 @@ int main(int argc, const char *argv[]) {
 	const DeviceStreamPrepareOpts debayer_capture_opts = {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
-		.pixelformat = V4L2_PIX_FMT_YUYV,
+		//.pixelformat = V4L2_PIX_FMT_YUYV,
+		.pixelformat = V4L2_PIX_FMT_YUV420,
 		.width = ss.width,
 		.height = ss.height,
 		//.userptr = NULL,

@@ -148,83 +148,24 @@ static int v4l2_enum_controls_ext(int fd) {
 	return 0;
 }
 
-static int setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
-	uint32_t image_size = 0;
-	uint32_t bytes_per_line = 0;
-
-	switch (pixelformat) {
-		case V4L2_PIX_FMT_YUYV:
-			{
-				const int bits_per_pixel = 16;
-				image_size = w * h * bits_per_pixel / 8;
-				bytes_per_line = w * bits_per_pixel / 8;
-				break;
-			}
-		case V4L2_PIX_FMT_SBGGR10:
-		case V4L2_PIX_FMT_SGBRG10:
-		case V4L2_PIX_FMT_SGRBG10:
-		case V4L2_PIX_FMT_SRGGB10:
-
-		case V4L2_PIX_FMT_SBGGR12:
-		case V4L2_PIX_FMT_SGBRG12:
-		case V4L2_PIX_FMT_SGRBG12:
-		case V4L2_PIX_FMT_SRGGB12:
-
-		case V4L2_PIX_FMT_SBGGR14:
-		case V4L2_PIX_FMT_SGBRG14:
-		case V4L2_PIX_FMT_SGRBG14:
-		case V4L2_PIX_FMT_SRGGB14:
-/*
-		case V4L2_PIX_FMT_SGBRG14P:
-		case V4L2_PIX_FMT_SBGGR10P:
-		case V4L2_PIX_FMT_SGBRG10P:
-		case V4L2_PIX_FMT_SGRBG10P:
-		case V4L2_PIX_FMT_SRGGB10P:
-		case V4L2_PIX_FMT_SBGGR12P:
-		case V4L2_PIX_FMT_SGBRG12P:
-		case V4L2_PIX_FMT_SGRBG12P:
-		case V4L2_PIX_FMT_SRGGB12P:
-		case V4L2_PIX_FMT_SBGGR14P:
-		case V4L2_PIX_FMT_SGRBG14P:
-		case V4L2_PIX_FMT_SRGGB14P:
-*/
-			{
-				// w/2 * G + (w/2) * (R+B) 16bit samples
-				const int bits_per_pixel = 16;
-				image_size = w * h * bits_per_pixel / 8;
-				bytes_per_line = w * bits_per_pixel / 8;
-				break;
-			}
-
-		case V4L2_PIX_FMT_MJPEG:
-			{
-				image_size = 0;
-				bytes_per_line = 0;
-				break;
-			}
-		default:
-			LOGE("FIXME Yet unsupported format %s(%x)", v4l2PixFmtName(pixelformat), pixelformat);
-			return EINVAL;
-	}
-
+static void setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
 	if (IS_TYPE_MPLANE(fmt->type)) {
 		struct v4l2_pix_format *const pix = &fmt->fmt.pix;
 		pix->pixelformat = pixelformat;
 		pix->width = w;
 		pix->height = h;
-		pix->sizeimage = image_size;
-		pix->bytesperline = bytes_per_line;
+		pix->sizeimage = 0;
+		pix->bytesperline = 0;
 	} else {
+		// TODO proper multiplane formats
 		struct v4l2_pix_format_mplane *const pix_mp = &fmt->fmt.pix_mp;
 		pix_mp->pixelformat = pixelformat;
 		pix_mp->width = w;
 		pix_mp->height = h;
 		pix_mp->num_planes = 1;
-		pix_mp->plane_fmt[0].sizeimage = image_size;
-		pix_mp->plane_fmt[0].bytesperline = bytes_per_line;
+		pix_mp->plane_fmt[0].sizeimage = 0;
+		pix_mp->plane_fmt[0].bytesperline = 0;
 	}
-
-	return 0;
 }
 
 static int streamSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h) {
@@ -238,11 +179,7 @@ static int streamSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h)
 
 	struct v4l2_format fmt = st->format;
 	ASSERT(fmt.type == st->type);
-	if (0 != setPixelFormat(&fmt, pixelformat, w, h)) {
-		LOGE("Unsupported pixel format %s(%#x)", v4l2PixFmtName(pixelformat), pixelformat);
-		LOGE("%s is not implemented == need bytesperline, sizeimage, mplanes compute code", __func__);
-		return EINVAL;
-	}
+	setPixelFormat(&fmt, pixelformat, w, h);
 
 	if (0 != ioctl(st->dev_fd, VIDIOC_S_FMT, &fmt)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT, %s): %d, %s",
@@ -256,37 +193,6 @@ static int streamSetFormat(DeviceStream *st, uint32_t pixelformat, int w, int h)
 	v4l2PrintFormat(&st->format);
 
 	return 0;
-
-#if 0
-	// TODO
-	LOGI("Seting format to %s %dx%d", v4l2PixFmtName(pixelformat), w, h);
-	switch (st->type) {
-		case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-			st->format.fmt.pix_mp.width = w;
-			st->format.fmt.pix_mp.height = h;
-			st->format.fmt.pix_mp.pixelformat = pixelformat;
-			// FIXME bytesperline
-			// TODO mplanes?
-			break;
-		case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-		case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-			st->format.fmt.pix.width = w;
-			st->format.fmt.pix.height = h;
-			st->format.fmt.pix.pixelformat = pixelformat;
-			break;
-	}
-
-
-	if (0 != ioctl(dev->fd, VIDIOC_S_FMT, &dev->fmt)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_S_FMT): %d, %s", dev->fd, errno, strerror(errno));
-		status = 1;
-		goto tail;
-	}
-
-tail:
-	return status;
-#endif
 }
 
 static int bufferExportDmabufFd(int fd, uint32_t buf_type, uint32_t index, uint32_t plane) {
