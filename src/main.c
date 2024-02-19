@@ -105,13 +105,6 @@ static void run(int frames) {
 	g.cam2debay = pumpCreate(&g.camera->capture, &g.isp_out->output);
 	g.debay2enc = pumpCreate(&g.isp_cap->capture, &g.encoder->output);
 
-	const char *out_filename = "frames.mjpeg";
-	g.fout = fopen(out_filename, "wb");
-	if (!g.fout) {
-		LOGE("fopen(\"%s\") => %s (%d)", out_filename, strerror(errno), errno);
-		return;
-	}
-
 	prev_frame_us = nowUs();
 	g.frame = 0;
 	//while (frames > 0) { --frames;
@@ -148,10 +141,12 @@ int main(int argc, const char *argv[]) {
 	UNUSED(argc);
 	UNUSED(argv);
 	g_begin_us = nowUs();
-	/* if (argc != 3) { */
-	/* 	fprintf(stderr, "Usage: %s /dev/v4l-subdev# /dev/video#\n", argv[0]); */
-	/* 	return 1; */
-	/* } */
+	if (argc != 3) {
+		fprintf(stderr, "Usage: %s filename.{mjpeg|h264} frame_count\n", argv[0]);
+		return 1;
+	}
+
+	const char *out_filename = argv[1];
 
 	// 1. Set pixel format and resolution on the sensor subdevice
 	Subdev *const sensor = subdevOpen(SENSOR_SUBDEV, 2);
@@ -162,11 +157,12 @@ int main(int argc, const char *argv[]) {
 
 	SubdevSet ss = {
 		.pad = 0,
-		.mbus_code = MEDIA_BUS_FMT_SRGGB10_1X10,
 
 		// TODO where to crop?
+		.mbus_code = MEDIA_BUS_FMT_SRGGB10_1X10,
 		.width = 1332,
 		.height = 990,
+
 		//.mbus_code = MEDIA_BUS_FMT_SRGGB12_1X12,
 		//.width = 2664,
 		//.height = 1980,
@@ -191,13 +187,11 @@ int main(int argc, const char *argv[]) {
 	const DeviceStreamPrepareOpts camera_capture_opts = {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
-		//.pixelformat = V4L2_PIX_FMT_YUYV,
-		//.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.pixelformat = V4L2_PIX_FMT_SRGGB10,
+		// TODO detect flipping
+		//.pixelformat = V4L2_PIX_FMT_SBGGR10,
 		.width = ss.width,
 		.height = ss.height,
-		//.userptr = NULL,
-		//.buffer_func = NULL,
 	};
 
 	if (0 != deviceStreamPrepare(&g.camera->capture, &camera_capture_opts)) {
@@ -206,7 +200,6 @@ int main(int argc, const char *argv[]) {
 	}
 
 	// 3. Open Bayer to YUV encoder
-	// /dev/video12 ?
 	g.isp_out= deviceOpen(DEBAYER_ISP_OUT_DEV);
 	if (!g.isp_out) {
 		LOGE("Failed to open isp_out device");
@@ -238,12 +231,9 @@ int main(int argc, const char *argv[]) {
 	const DeviceStreamPrepareOpts debayer_capture_opts = {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
-		//.pixelformat = V4L2_PIX_FMT_YUYV,
 		.pixelformat = V4L2_PIX_FMT_YUV420,
 		.width = ss.width,
 		.height = ss.height,
-		//.userptr = NULL,
-		//.buffer_func = NULL,
 	};
 
 	if (0 != deviceStreamPrepare(&g.isp_cap->capture, &debayer_capture_opts)) {
@@ -299,11 +289,9 @@ int main(int argc, const char *argv[]) {
 	const DeviceStreamPrepareOpts encoder_capture_opts = {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_MMAP,
-		.pixelformat = V4L2_PIX_FMT_MJPEG,
+		.pixelformat = strstr(out_filename, "h264") != NULL ? V4L2_PIX_FMT_H264 : V4L2_PIX_FMT_MJPEG,
 		.width = ss.width,
 		.height = ss.height,
-		//.userptr = NULL,
-		//.buffer_func = NULL,
 	};
 
 	if (0 != deviceStreamPrepare(&g.encoder->capture, &encoder_capture_opts)) {
@@ -334,8 +322,14 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	int max_frames = argc > 1 ? atoi(argv[1]) : 60;
-	max_frames = max_frames > 0 ? max_frames : 60;
+	g.fout = fopen(out_filename, "wb");
+	if (!g.fout) {
+		LOGE("fopen(\"%s\") => %s (%d)", out_filename, strerror(errno), errno);
+		return -1;
+	}
+
+	int max_frames = argc > 2 ? atoi(argv[2]) : 60;
+	max_frames = max_frames >= 0 ? max_frames : 60;
 	run(max_frames);
 
 	deviceStreamStop(&g.camera->capture);
