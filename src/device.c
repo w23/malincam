@@ -166,6 +166,7 @@ static int v4l2Selection(int fd, enum v4l2_buf_type type, uint32_t cmd, uint32_t
 		return -1;
 	}
 	
+	LOGI("VIDIOC_%c_SELECTION:", cmd == VIDIOC_S_SELECTION ? 'S' : 'G');
 	v4l2PrintSelection(&sel);
 
 	if (rekt) {
@@ -192,8 +193,6 @@ static int setCrop(DeviceStream *st, int w, int h) {
 		v4l2Selection(st->dev_fd, st->type, VIDIOC_S_SELECTION, V4L2_SEL_TGT_CROP, &rect);
 		v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_CROP, &st->crop);
 	}
-
-
 
 	return 0;
 }
@@ -568,7 +567,15 @@ int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
 		return -1;
 	}
 
+	st->crop = (struct v4l2_rect){
+		.left = 0,
+		.top = 0,
+		.width = opts->width,
+		.height = opts->height,
+	};
 	setCrop(st, opts->crop_width, opts->crop_height);
+
+	st->compose = st->crop;
 	setCompose(st, opts->crop_width, opts->crop_height);
 
 	if (0 != streamRequestBuffers(st, opts->buffers_count, opts->buffer_memory)) {
