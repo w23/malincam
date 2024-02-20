@@ -148,6 +148,75 @@ static int v4l2_enum_controls_ext(int fd) {
 	return 0;
 }
 
+static int v4l2Selection(int fd, enum v4l2_buf_type type, uint32_t cmd, uint32_t target, struct v4l2_rect *rekt) {
+	struct v4l2_selection sel = {
+		.type = type,
+		.target = target,
+	};
+
+	if (rekt && cmd == VIDIOC_S_SELECTION) {
+		sel.r = *rekt;
+	}
+
+	if (0 != ioctl(fd, cmd, &sel)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_%c_SELECTION, [target=%s]): %d, %s",
+			fd, cmd == VIDIOC_S_SELECTION ? 'S' : 'G',
+			v4l2SelTgtName(target),
+			errno, strerror(errno));
+		return -1;
+	}
+	
+	v4l2PrintSelection(&sel);
+
+	if (rekt) {
+		*rekt = sel.r;
+	}
+
+	return 0;
+}
+
+static int setCrop(DeviceStream *st, int w, int h) {
+	struct v4l2_rect crop_bounds = {0};
+	struct v4l2_rect crop_default = {0};
+	struct v4l2_rect native = {0};
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_NATIVE_SIZE, VIDIOC_G_SELECTION, &native);
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP_BOUNDS, VIDIOC_G_SELECTION, &crop_bounds);
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP_DEFAULT, VIDIOC_G_SELECTION, &crop_default);
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP, VIDIOC_G_SELECTION, &st->crop);
+
+	// TODO do math, validate, etc
+	if (w != 0 && h != 0) {
+		struct v4l2_rect rect = crop_default;
+		rect.width = w;
+		rect.height = h;
+		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP, VIDIOC_S_SELECTION, &rect);
+		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP, VIDIOC_G_SELECTION, &st->crop);
+	}
+
+
+
+	return 0;
+}
+
+static int setCompose(DeviceStream *st, int w, int h) {
+	struct v4l2_rect compose_bounds = {0};
+	struct v4l2_rect compose_default = {0};
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE_BOUNDS, VIDIOC_G_SELECTION, &compose_bounds);
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE_DEFAULT, VIDIOC_G_SELECTION, &compose_default);
+	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE, VIDIOC_G_SELECTION, &st->compose);
+
+	// TODO do math, validate, etc
+	if (w != 0 && h != 0) {
+		struct v4l2_rect rect = compose_default;
+		rect.width = w;
+		rect.height = h;
+		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE, VIDIOC_S_SELECTION, &rect);
+		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE, VIDIOC_G_SELECTION, &st->compose);
+	}
+
+	return 0;
+}
+
 static void setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
 	if (IS_TYPE_MPLANE(fmt->type)) {
 		struct v4l2_pix_format *const pix = &fmt->fmt.pix;
@@ -157,11 +226,12 @@ static void setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w,
 		pix->sizeimage = 0;
 		pix->bytesperline = 0;
 	} else {
-		// TODO proper multiplane formats
 		struct v4l2_pix_format_mplane *const pix_mp = &fmt->fmt.pix_mp;
 		pix_mp->pixelformat = pixelformat;
 		pix_mp->width = w;
 		pix_mp->height = h;
+
+		// TODO proper multiplanar formats
 		pix_mp->num_planes = 1;
 		pix_mp->plane_fmt[0].sizeimage = 0;
 		pix_mp->plane_fmt[0].bytesperline = 0;
@@ -497,6 +567,9 @@ int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
 	if (0 != streamSetFormat(st, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
+
+	setCrop(st, opts->crop_width, opts->crop_height);
+	setCompose(st, opts->crop_width, opts->crop_height);
 
 	if (0 != streamRequestBuffers(st, opts->buffers_count, opts->buffer_memory)) {
 		return -2;

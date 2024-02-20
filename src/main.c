@@ -217,6 +217,10 @@ int main(int argc, const char *argv[]) {
 
 	DeviceStreamPrepareOpts debayer_output_opts = camera_capture_opts;
 	debayer_output_opts.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT;
+
+	debayer_output_opts.crop_width = 1280;
+	debayer_output_opts.crop_height = 720;
+
 	if (0 != deviceStreamPrepare(&g.isp_out->output, &debayer_output_opts)) {
 		LOGE("Unable to prepare isp_out:output stream");
 		return 1;
@@ -236,8 +240,10 @@ int main(int argc, const char *argv[]) {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
 		.pixelformat = V4L2_PIX_FMT_YUV420,
-		.width = ss.width,
-		.height = ss.height,
+		.width = g.isp_out->output.compose.width,
+		.height = g.isp_out->output.compose.height,
+		/* .width = ss.width, */
+		/* .height = ss.height, */
 	};
 
 	if (0 != deviceStreamPrepare(&g.isp_cap->capture, &debayer_capture_opts)) {
@@ -294,8 +300,10 @@ int main(int argc, const char *argv[]) {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_MMAP,
 		.pixelformat = strstr(out_filename, "h264") != NULL ? V4L2_PIX_FMT_H264 : V4L2_PIX_FMT_MJPEG,
-		.width = ss.width,
-		.height = ss.height,
+		.width = encoder_output_opts.width,
+		.height = encoder_output_opts.height,
+		/* .width = ss.width, */
+		/* .height = ss.height, */
 	};
 
 	if (0 != deviceStreamPrepare(&g.encoder->capture, &encoder_capture_opts)) {

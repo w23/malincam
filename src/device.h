@@ -32,6 +32,7 @@ typedef struct DeviceStream {
 	StreamState state;
 
 	struct v4l2_format format;
+	struct v4l2_rect crop, compose;
 
 	Array /*T(struct v4l2_fmtdesc)*/ formats;
 
@@ -71,6 +72,8 @@ typedef struct DeviceStreamPrepareOpts {
 
 	uint32_t pixelformat;
 	uint32_t width, height;
+
+	uint32_t crop_width, crop_height;
 } DeviceStreamPrepareOpts;
 
 // @mbus_code is optional, set to 0 if not known
@@ -98,3 +101,5 @@ void v4l2PrintFormatFlags(uint32_t flags);
 const char *v4l2PixFmtName(uint32_t fmt);
 void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse);
 const char *v4l2MbusFmtName(uint32_t format);
+void v4l2PrintSelection(const struct v4l2_selection* sel);
+const char* v4l2SelTgtName(uint32_t target);

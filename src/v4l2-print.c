@@ -769,24 +769,18 @@ void v4l2PrintSubdevFormat(const struct v4l2_subdev_format *format) {
 	v4l2PrintMbusFramefmt(&format->format);
 }
 
-#define MCAM_SEL_TGT_LIST(X) \
-	X(V4L2_SEL_TGT_CROP) \
-	X(V4L2_SEL_TGT_CROP_DEFAULT) \
-	X(V4L2_SEL_TGT_CROP_BOUNDS) \
-	X(V4L2_SEL_TGT_NATIVE_SIZE) \
-	X(V4L2_SEL_TGT_COMPOSE) \
-	X(V4L2_SEL_TGT_COMPOSE_DEFAULT) \
-	X(V4L2_SEL_TGT_COMPOSE_BOUNDS) \
-	X(V4L2_SEL_TGT_COMPOSE_PADDED) \
-
-const char* v4l2SelTgtName(uint32_t target) {
-	switch(target) {
-#define X(bit) case bit: return #bit;
-	MCAM_SEL_TGT_LIST(X)
-#undef X
+const char *v4l2SelTgtName(uint32_t target) {
+	switch (target) {
+		case V4L2_SEL_TGT_CROP: return "V4L2_SEL_TGT_CROP";
+		case V4L2_SEL_TGT_CROP_DEFAULT: return "V4L2_SEL_TGT_CROP_DEFAULT";
+		case V4L2_SEL_TGT_CROP_BOUNDS: return "V4L2_SEL_TGT_CROP_BOUNDS";
+		case V4L2_SEL_TGT_NATIVE_SIZE: return "V4L2_SEL_TGT_NATIVE_SIZE";
+		case V4L2_SEL_TGT_COMPOSE: return "V4L2_SEL_TGT_COMPOSE";
+		case V4L2_SEL_TGT_COMPOSE_DEFAULT: return "V4L2_SEL_TGT_COMPOSE_DEFAULT";
+		case V4L2_SEL_TGT_COMPOSE_BOUNDS: return "V4L2_SEL_TGT_COMPOSE_BOUNDS";
+		case V4L2_SEL_TGT_COMPOSE_PADDED: return "V4L2_SEL_TGT_COMPOSE_PADDED";
+		default: return "UNKNOWN";
 	}
-
-	return "UNKNOWN";
 }
 
 #define MCAM_SEL_FLAG_LIST(X) \
@@ -861,4 +855,12 @@ void v4l2PrintSubdevFrameInterval(const struct v4l2_subdev_frame_interval_enum *
 	LOGI("   fiv.width = %d", fiv->width);
 	LOGI("   fiv.height = %d", fiv->height);
 	v4l2PrintInterval("  fiv.interval = ", fiv->interval);
+}
+
+void v4l2PrintSelection(const struct v4l2_selection* sel) {
+	LOGI("  sel.type = %s", v4l2BufTypeName(sel->type));
+	LOGI("  sel.target = %s", v4l2SelTgtName(sel->target));
+	LOGI("  sel.flags = %x", sel->flags);
+	LOGI("  sel.r = {%d, %d, %dx%d}",
+			sel->r.left, sel->r.top, sel->r.width, sel->r.height);
 }
