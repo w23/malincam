@@ -179,18 +179,18 @@ static int setCrop(DeviceStream *st, int w, int h) {
 	struct v4l2_rect crop_bounds = {0};
 	struct v4l2_rect crop_default = {0};
 	struct v4l2_rect native = {0};
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_NATIVE_SIZE, VIDIOC_G_SELECTION, &native);
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP_BOUNDS, VIDIOC_G_SELECTION, &crop_bounds);
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP_DEFAULT, VIDIOC_G_SELECTION, &crop_default);
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP, VIDIOC_G_SELECTION, &st->crop);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_NATIVE_SIZE, &native);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_CROP_BOUNDS, &crop_bounds);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_CROP_DEFAULT, &crop_default);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_CROP, &st->crop);
 
 	// TODO do math, validate, etc
 	if (w != 0 && h != 0) {
 		struct v4l2_rect rect = crop_default;
 		rect.width = w;
 		rect.height = h;
-		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP, VIDIOC_S_SELECTION, &rect);
-		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_CROP, VIDIOC_G_SELECTION, &st->crop);
+		v4l2Selection(st->dev_fd, st->type, VIDIOC_S_SELECTION, V4L2_SEL_TGT_CROP, &rect);
+		v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_CROP, &st->crop);
 	}
 
 
@@ -201,17 +201,17 @@ static int setCrop(DeviceStream *st, int w, int h) {
 static int setCompose(DeviceStream *st, int w, int h) {
 	struct v4l2_rect compose_bounds = {0};
 	struct v4l2_rect compose_default = {0};
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE_BOUNDS, VIDIOC_G_SELECTION, &compose_bounds);
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE_DEFAULT, VIDIOC_G_SELECTION, &compose_default);
-	v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE, VIDIOC_G_SELECTION, &st->compose);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_COMPOSE_BOUNDS, &compose_bounds);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_COMPOSE_DEFAULT, &compose_default);
+	v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_COMPOSE, &st->compose);
 
 	// TODO do math, validate, etc
 	if (w != 0 && h != 0) {
 		struct v4l2_rect rect = compose_default;
 		rect.width = w;
 		rect.height = h;
-		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE, VIDIOC_S_SELECTION, &rect);
-		v4l2Selection(st->dev_fd, st->type, V4L2_SEL_TGT_COMPOSE, VIDIOC_G_SELECTION, &st->compose);
+		v4l2Selection(st->dev_fd, st->type, VIDIOC_S_SELECTION, V4L2_SEL_TGT_COMPOSE, &rect);
+		v4l2Selection(st->dev_fd, st->type, VIDIOC_G_SELECTION, V4L2_SEL_TGT_COMPOSE, &st->compose);
 	}
 
 	return 0;
