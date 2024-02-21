@@ -105,7 +105,7 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	Node *const enc = piOpenEncoder(PiEncoderMJPEG);
+	Node *const enc = piOpenEncoder(PiEncoderJPEG);
 	if (!enc) {
 		LOGE("Unable to open Rpi encoder");
 		return 1;
@@ -150,6 +150,7 @@ int main(int argc, const char *argv[]) {
 	pollinatorRegisterFd(&pol, cam->output->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
 	pollinatorRegisterFd(&pol, isp->input->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
 
+	// FIXME if using single-device isp /dev/video12, then this fd will be the same as input
 	pollinatorRegisterFd(&pol, isp->output->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT);
 	pollinatorRegisterFd(&pol, enc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT | FRAME_READY_BIT);
 
@@ -169,11 +170,21 @@ int main(int argc, const char *argv[]) {
 			exit(1);
 		}
 
-		if (bits & CAM_TO_ISP_BIT) 
-			pumpPump(cam_to_isp);
+		if (bits & CAM_TO_ISP_BIT) {
+			const int result = pumpPump(cam_to_isp);
+			if (0 != result) {
+				LOGE("cam-to-isp pump error: %d", result);
+				return 1;
+			}
+		}
 
-		if (bits & ISP_TO_ENC_BIT)
-			pumpPump(isp_to_enc);
+		if (bits & ISP_TO_ENC_BIT) {
+			const int result = pumpPump(isp_to_enc);
+			if (0 != result) {
+				LOGE("isp-to-enc pump error: %d", result);
+				return 1;
+			}
+		}
 
 		if (bits & FRAME_READY_BIT)
 			readFrame(enc->output, g.fout);
