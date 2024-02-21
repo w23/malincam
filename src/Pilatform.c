@@ -283,6 +283,7 @@ static struct Node *piOpenEncoderImpl(const char *name, uint32_t pixfmt, const c
 	enc->node.name = name;
 	enc->node.dtorFunc = encoderDtor;
 	enc->node.output = &encoder->capture;
+	enc->node.input = &encoder->output;
 
 	enc->encoder = encoder;
 
