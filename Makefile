@@ -33,6 +33,8 @@ $(OBJDIR)/%.c.o: %.c
 SOURCES += \
 	src/device.c \
 	src/main.c \
+	src/Node.c \
+	src/Pilatform.c \
 	src/pollinator.c \
 	src/pump.c \
 	src/queue.c \

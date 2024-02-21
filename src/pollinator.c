@@ -6,8 +6,8 @@
 #include <string.h> // strerror
 
 typedef struct {
-	void *userptr;
 	pollin_fd_f *func;
+	uintptr_t arg1, arg2;
 } PollinatorFd;
 
 void pollinatorInit(Pollinator *p) {
@@ -20,10 +20,12 @@ void pollinatorFinalize(Pollinator *p) {
 	arrayDestroy(&p->fds);
 }
 
-int pollinatorRegisterFd(Pollinator *p, int fd, void *userptr, pollin_fd_f *func) {
+//int pollinatorRegisterFd(Pollinator *p, int fd, void *userptr, pollin_fd_f *func) {
+int pollinatorRegisterFd(Pollinator *p, int fd, pollin_fd_f *func, uintptr_t arg1, uintptr_t arg2) {
 	PollinatorFd new_fd = {
-		.userptr = userptr,
 		.func = func,
+		.arg1 = arg1,
+		.arg2 = arg2,
 	};
 	arrayAppend(&p->fds, &new_fd);
 
@@ -57,9 +59,12 @@ int pollinatorPoll(Pollinator *p, int timeout_ms) {
 		if (0 == flags)
 			continue;
 
-		const int func_result = fd->func(fd->userptr, pfd->fd, flags);
+		const int func_result = fd->func(pfd->fd, flags, fd->arg1, fd->arg2);
 		switch (func_result) {
 			case POLLINATOR_CONTINUE:
+				break;
+			case POLLINATOR_STOP:
+				LOGE("POLLINATOR_STOP is not implemented");
 				break;
 			default:
 				result = func_result;

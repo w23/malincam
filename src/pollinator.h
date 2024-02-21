@@ -14,7 +14,7 @@ typedef enum {
 #define POLLIN_FD_ERR (1<<2)
 
 // No pollinator functions are safe to call from within the callback
-typedef int (pollin_fd_f)(void *userptr, int fd, uint32_t flags);
+typedef int (pollin_fd_f)(int fd, uint32_t flags, uintptr_t arg1, uintptr_t arg2);
 
 typedef struct Pollinator {
 	Array fds;
@@ -24,5 +24,15 @@ typedef struct Pollinator {
 void pollinatorInit(Pollinator *p);
 void pollinatorFinalize(Pollinator *p);
 
-int pollinatorRegisterFd(Pollinator *p, int fd, void *userptr, pollin_fd_f *func);
+/*
+typedef struct {
+	int index_;
+} PollinatorHandle;
+
+#define POLLINATOR_IS_INVALID_HANDLE(handle) ((handle).index_ < 0)
+*/
+
+int pollinatorRegisterFd(Pollinator *p, int fd, pollin_fd_f *func, uintptr_t arg1, uintptr_t arg2);
+// TODO pollinatorUnregister(Pollinator *p, PollinatorHandle handle);
+
 int pollinatorPoll(Pollinator *p, int timeout_ms);

@@ -2,8 +2,8 @@
 #include "array.h"
 
 #include "common.h"
-#include "device.h"
-#include "subdev.h"
+#include "Node.h"
+#include "Pilatform.h"
 #include "pollinator.h"
 #include "pump.h"
 
@@ -63,77 +63,24 @@ struct Chain {
 };
 
 static struct {
-	Device *camera;
-	Device *isp_out;
-	Device *isp_cap;
-	Device *encoder;
-
 	Pump *cam2debay;
 	Pump *debay2enc;
-	uint32_t signaled_fds;
 
 	int frame;
 	FILE *fout;
 } g;
 
-static int pumpSignalFunc(void *userptr, int fd, uint32_t flags) {
-	const int bit = (uintptr_t)userptr;
-
+static int bitSetFunc(int fd, uint32_t flags, uintptr_t arg1, uintptr_t arg2) {
 	if (flags&POLLIN_FD_ERR) {
 		LOGE("Error registered on fd=%d", fd);
 		exit(1);
 	}
 
-	//LOGI("fd=%d wakes up flags=%x, setting bit=%x", fd, flags, bit);
-	g.signaled_fds |= bit;
-
-	if (fd == g.encoder->fd) {
-		readFrame(&g.encoder->capture, g.fout);
-	}
+	uint32_t *const bits = (uint32_t*)arg1;
+	*bits |= arg2;
 
 	return POLLINATOR_CONTINUE;
 }
-
-static void run(int frames) {
-	Pollinator pol;
-	pollinatorInit(&pol);
-	pollinatorRegisterFd(&pol, g.camera->fd, (void*)(uintptr_t)(1<<0), pumpSignalFunc);
-	pollinatorRegisterFd(&pol, g.isp_out->fd, (void*)(uintptr_t)(1<<0), pumpSignalFunc);
-	pollinatorRegisterFd(&pol, g.isp_cap->fd, (void*)(uintptr_t)(1<<1), pumpSignalFunc);
-	pollinatorRegisterFd(&pol, g.encoder->fd, (void*)(uintptr_t)(1<<1), pumpSignalFunc);
-
-	g.cam2debay = pumpCreate(&g.camera->capture, &g.isp_out->output);
-	g.debay2enc = pumpCreate(&g.isp_cap->capture, &g.encoder->output);
-
-	prev_frame_us = nowUs();
-	g.frame = 0;
-	//while (frames > 0) { --frames;
-	while (frame_count < frames) {
-		g.signaled_fds = 0;
-		//const uint64_t poll_pre = nowUs();
-		const int result = pollinatorPoll(&pol, 5000);
-		//const uint64_t poll_after = nowUs();
-		//LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
-
-		if (result < 0) {
-			LOGE("Pollinator returned %d", result);
-			exit(1);
-		}
-
-		if (g.signaled_fds & 1)
-			pumpPump(g.cam2debay);
-
-		if (g.signaled_fds & 2)
-			pumpPump(g.debay2enc);
-
-	}
-}
-
-#define SENSOR_SUBDEV "/dev/v4l-subdev0"
-#define CAMERA_DEV "/dev/video0"
-#define DEBAYER_ISP_OUT_DEV "/dev/video13"
-#define DEBAYER_ISP_CAP_DEV "/dev/video14"
-#define ENCODER_DEV "/dev/video11"
 
 int main(int argc, const char *argv[]) {
 	UNUSED(argc);
@@ -146,209 +93,106 @@ int main(int argc, const char *argv[]) {
 
 	const char *out_filename = argv[1];
 
+	Node *const cam = piOpenCamera();
+	if (!cam) {
+		LOGE("Unable to open Rpi camera");
+		return 1;
+	}
+
+	Node *const isp = piOpenISP();
+	if (!isp) {
+		LOGE("Unable to open Rpi ISP");
+		return 1;
+	}
+
+	Node *const enc = piOpenEncoder(PiEncoderMJPEG);
+	if (!enc) {
+		LOGE("Unable to open Rpi encoder");
+		return 1;
+	}
+
 	g.fout = fopen(out_filename, "wb");
 	if (!g.fout) {
 		LOGE("fopen(\"%s\") => %s (%d)", out_filename, strerror(errno), errno);
-		return -1;
-	}
-
-	// 1. Set pixel format and resolution on the sensor subdevice
-	Subdev *const sensor = subdevOpen(SENSOR_SUBDEV, 2);
-	if (!sensor) {
-		LOGE("Failed to open sensor subdev");
-		return 1;
-	}
-
-	SubdevSet ss = {
-		.pad = 0,
-
-		// TODO where to crop?
-		.mbus_code = MEDIA_BUS_FMT_SRGGB10_1X10,
-		.width = 1332,
-		.height = 990,
-
-		//.mbus_code = MEDIA_BUS_FMT_SRGGB12_1X12,
-		//.width = 2664,
-		//.height = 1980,
-	};
-	if (0 != subdevSet(sensor, &ss)) {
-		LOGE("Failed to set up subdev");
-		return 1;
-	}
-
-	// 2. Open camera device
-	g.camera = deviceOpen(CAMERA_DEV);
-	if (!g.camera) {
-		LOGE("Failed to open camera device");
-		return 1;
-	}
-
-	if (0 != deviceStreamQueryFormats(&g.camera->capture, ss.mbus_code)) {
-		LOGE("Failed to query camera:capture stream formats");
-		return 1;
-	}
-
-	const DeviceStreamPrepareOpts camera_capture_opts = {
-		.buffers_count = 3,
-		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
-		.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		// TODO detect flipping
-		//.pixelformat = V4L2_PIX_FMT_SBGGR10,
-		.width = ss.width,
-		.height = ss.height,
-	};
-
-	if (0 != deviceStreamPrepare(&g.camera->capture, &camera_capture_opts)) {
-		LOGE("Unable to prepare camera:capture stream");
-		return 1;
-	}
-
-	// 3. Open Bayer to YUV encoder
-	g.isp_out= deviceOpen(DEBAYER_ISP_OUT_DEV);
-	if (!g.isp_out) {
-		LOGE("Failed to open isp_out device");
-		return 1;
-	}
-
-	if (0 != deviceStreamQueryFormats(&g.isp_out->output, 0)) {
-		LOGE("Failed to query isp_out:output stream formats");
-		return 1;
-	}
-
-	DeviceStreamPrepareOpts debayer_output_opts = camera_capture_opts;
-	debayer_output_opts.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT;
-
-	debayer_output_opts.crop_width = 1280;
-	debayer_output_opts.crop_height = 720;
-
-	if (0 != deviceStreamPrepare(&g.isp_out->output, &debayer_output_opts)) {
-		LOGE("Unable to prepare isp_out:output stream");
-		return 1;
-	}
-
-	g.isp_cap= deviceOpen(DEBAYER_ISP_CAP_DEV);
-	if (!g.isp_cap) {
-		LOGE("Failed to open isp_cap device");
-		return 1;
-	}
-	if (0 != deviceStreamQueryFormats(&g.isp_cap->capture, 0)) {
-		LOGE("Failed to query iso_cap:capture stream formats");
-		return 1;
-	}
-
-	const DeviceStreamPrepareOpts debayer_capture_opts = {
-		.buffers_count = 3,
-		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
-		.pixelformat = V4L2_PIX_FMT_YUV420,
-		.width = g.isp_out->output.compose.width,
-		.height = g.isp_out->output.compose.height,
-		/* .width = ss.width, */
-		/* .height = ss.height, */
-	};
-
-	if (0 != deviceStreamPrepare(&g.isp_cap->capture, &debayer_capture_opts)) {
-		LOGE("Unable to prepare isp_cap:capture stream");
-		return 1;
-	}
-
-	// See https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-encoder.html
-	// 3.1 Enum CAPTURE (i.e. "read") formats
-	// 3.2 Set CAPTURE format
-	//     - Will return sizeimage, width, height set for currently set resolution
-	// 3.3 Enum OUTPUT (i.e. "write") formats (Depends on CAPTURE format)
-	// 3.4 Enum framesizes
-	// 3.5 Enum frameintervals
-	// 3.6 Query controls (codec opts, etc)
-	// 3.7 Set OUTPUT format (including width x height)
-	// 3.8 Set frame interval
-	// 3.9 Set selection/crop
-	// 3.10 Alloc and prepare buffers
-	//      - See https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dmabuf.html#dmabuf
-	//      - VIDIOC_REQBUFS to allocated them internally
-	//        https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-reqbufs.html#vidioc-reqbufs
-	//      - VIDIOC_EXPBUF to get DMABUF fds
-	//        https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-expbuf.html#vidioc-expbuf
-	// 3.11 Start streaming on both in/out
-	//      Set timestamp field on "write" buffers to match them to "read" ones
-
-	// 4. Open YUV to MJPEG encoder
-	// /dev/video11
-	g.encoder = deviceOpen(ENCODER_DEV);
-	if (!g.encoder) {
-		LOGE("Failed to open encoder device");
-		return 1;
-	}
-
-	if (0 != deviceStreamQueryFormats(&g.encoder->output, 0)) {
-		LOGE("Failed to query encoder:output stream formats");
-		return 1;
-	}
-
-	DeviceStreamPrepareOpts encoder_output_opts = debayer_capture_opts;
-	encoder_output_opts.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT;
-	if (0 != deviceStreamPrepare(&g.encoder->output, &encoder_output_opts)) {
-		LOGE("Unable to prepare encoder output stream");
-		return 1;
-	}
-
-	if (0 != deviceStreamQueryFormats(&g.encoder->capture, 0)) {
-		LOGE("Failed to query encoder:capture stream formats");
-		return 1;
-	}
-
-	const DeviceStreamPrepareOpts encoder_capture_opts = {
-		.buffers_count = 3,
-		.buffer_memory = BUFFER_MEMORY_MMAP,
-		.pixelformat = strstr(out_filename, "h264") != NULL ? V4L2_PIX_FMT_H264 : V4L2_PIX_FMT_MJPEG,
-		.width = encoder_output_opts.width,
-		.height = encoder_output_opts.height,
-		/* .width = ss.width, */
-		/* .height = ss.height, */
-	};
-
-	if (0 != deviceStreamPrepare(&g.encoder->capture, &encoder_capture_opts)) {
-		LOGE("Unable to prepare encoder capture stream");
 		return 1;
 	}
 
 	// N. Start streaming
-	if (0 != deviceStreamStart(&g.encoder->capture)) {
-		LOGE("Unable to start encoder:capture");
+	if (0 != nodeStart(enc)) {
+		LOGE("Unable to start encoder");
 		return 1;
 	}
-	if (0 != deviceStreamStart(&g.encoder->output)) {
-		LOGE("Unable to start encoder:output");
+
+	if (0 != nodeStart(isp)) {
+		LOGE("Unable to start ISP");
 		return 1;
 	}
-	if (0 != deviceStreamStart(&g.isp_cap->capture)) {
-		LOGE("Unable to start debayer:capture");
-		return 1;
-	}
-	if (0 != deviceStreamStart(&g.isp_out->output)) {
-		LOGE("Unable to start debayer:output");
-		return 1;
-	}
-	if (0 != deviceStreamStart(&g.camera->capture)) {
-		LOGE("Unable to start camera:capture");
+
+	if (0 != nodeStart(cam)) {
+		LOGE("Unable to start camera");
 		return 1;
 	}
 
 	int max_frames = argc > 2 ? atoi(argv[2]) : 60;
 	max_frames = max_frames >= 0 ? max_frames : 60;
-	run(max_frames);
+
+	Pollinator pol;
+	pollinatorInit(&pol);
+
+	Pump *const cam_to_isp = pumpCreate(cam->output, isp->input);
+	Pump *const isp_to_enc = pumpCreate(isp->output, enc->input);
+
+#define CAM_TO_ISP_BIT (1<<0)
+#define ISP_TO_ENC_BIT (1<<1)
+#define FRAME_READY_BIT (1<<2)
+	uint32_t bits = 0;
+
+	pollinatorRegisterFd(&pol, cam->output->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
+	pollinatorRegisterFd(&pol, isp->input->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
+
+	pollinatorRegisterFd(&pol, isp->output->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT);
+	pollinatorRegisterFd(&pol, enc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT | FRAME_READY_BIT);
+
+	prev_frame_us = nowUs();
+	g.frame = 0;
+	//while (frames > 0) { --frames;
+	while (frame_count < max_frames) {
+		bits = 0;
+
+		//const uint64_t poll_pre = nowUs();
+		const int result = pollinatorPoll(&pol, 5000);
+		//const uint64_t poll_after = nowUs();
+		//LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+
+		if (result < 0) {
+			LOGE("Pollinator returned %d", result);
+			exit(1);
+		}
+
+		if (bits & CAM_TO_ISP_BIT) 
+			pumpPump(cam_to_isp);
+
+		if (bits & ISP_TO_ENC_BIT)
+			pumpPump(isp_to_enc);
+
+		if (bits & FRAME_READY_BIT)
+			readFrame(enc->output, g.fout);
+	}
+
+	pumpDestroy(isp_to_enc);
+	pumpDestroy(cam_to_isp);
+
+	pollinatorFinalize(&pol);
 
 	fclose(g.fout);
 
-	deviceStreamStop(&g.camera->capture);
-	deviceStreamStop(&g.isp_out->output);
-	deviceStreamStop(&g.isp_cap->capture);
-	deviceStreamStop(&g.encoder->output);
-	deviceStreamStop(&g.encoder->capture);
+	nodeStop(cam);
+	nodeStop(isp);
+	nodeStop(enc);
 
-	deviceClose(g.encoder);
-	deviceClose(g.isp_cap);
-	deviceClose(g.isp_out);
-	deviceClose(g.camera);
-	subdevClose(sensor);
+	nodeDestroy(enc);
+	nodeDestroy(isp);
+	nodeDestroy(cam);
+
 	return 0;
 }
