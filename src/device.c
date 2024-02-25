@@ -217,11 +217,12 @@ static int setCompose(DeviceStream *st, int w, int h) {
 }
 
 static void setPixelFormat(struct v4l2_format *fmt, uint32_t pixelformat, int w, int h) {
-	if (IS_TYPE_MPLANE(fmt->type)) {
+	if (!IS_TYPE_MPLANE(fmt->type)) {
 		struct v4l2_pix_format *const pix = &fmt->fmt.pix;
 		pix->pixelformat = pixelformat;
 		pix->width = w;
 		pix->height = h;
+
 		pix->sizeimage = 0;
 		pix->bytesperline = 0;
 	} else {

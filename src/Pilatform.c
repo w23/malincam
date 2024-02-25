@@ -12,11 +12,11 @@
 // 120fps sensor settings for HQ camera
 #define SENSOR_WIDTH 1332
 #define SENSOR_HEIGHT 990
-#define SENSOR_BUSFFMT MEDIA_BUS_FMT_SRGGB10_1X10
+#define SENSOR_BUSFMT MEDIA_BUS_FMT_SRGGB10_1X10
 
 // TODO detect flipping
-//.pixelformat = V4L2_PIX_FMT_SBGGR10,
-#define CAMERA_PIXFMT V4L2_PIX_FMT_SRGGB10
+#define CAMERA_PIXFMT V4L2_PIX_FMT_SBGGR10P
+//#define CAMERA_PIXFMT V4L2_PIX_FMT_SRGGB10P
 
 //#define CROP_TO_720P
 #define CROP_TO_976
@@ -24,6 +24,7 @@
 #define ISP_CROP_WIDTH 1280
 #define ISP_CROP_HEIGHT 720
 #elif defined(CROP_TO_976)
+// Needed for using JPEG encoder
 #define ISP_CROP_WIDTH 1332
 #define ISP_CROP_HEIGHT 976
 #else
@@ -67,7 +68,7 @@ struct Node *piOpenCamera(void) {
 		.pad = 0,
 
 		// TODO where to crop?
-		.mbus_code = SENSOR_BUSFFMT,
+		.mbus_code = SENSOR_BUSFMT,
 		.width = SENSOR_WIDTH,
 		.height = SENSOR_HEIGHT,
 
@@ -96,6 +97,7 @@ struct Node *piOpenCamera(void) {
 	const DeviceStreamPrepareOpts camera_capture_opts = {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
+
 		.pixelformat = CAMERA_PIXFMT,
 		.width = SENSOR_WIDTH,
 		.height = SENSOR_HEIGHT,

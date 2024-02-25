@@ -1,6 +1,6 @@
 - [x] Get bayer images from sensor
 - [x] print out the format that has been set
-- [ ] name devices and streams
+- [-] name devices and streams
 - [x] Buffer carousel: on each pad/endpoint have an outstanding buffer. It gets replaced any time a new buffer is
       dequeued. Similar with inverse direction: buffers returning from outside are written into a queue.
       - [x] Q: how should it signal buffer availability in both ways, if the other side is idle and waiting?
@@ -18,3 +18,8 @@
     - [ ] set it up
     - [ ] open v4l
     - [ ] feed it
+- [ ] expand to h=992 instead of cropping to 976
+      - possibly set isp to 992, and then crop image_encode to 990
+- [ ] crop from center
+- [ ] controls
+- [ ] sensor flipping and format
