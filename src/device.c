@@ -512,6 +512,38 @@ void deviceClose(struct Device* dev) {
 	free(dev);
 }
 
+int deviceEventSubscribe(Device *dev, uint32_t event) {
+	struct v4l2_event_subscription subs = {
+		.type = event,
+		.id = 0,
+		.flags = 0,
+	};
+
+	if (0 != ioctl(dev->fd, VIDIOC_SUBSCRIBE_EVENT, &subs)) {
+		LOGE("Failed to ioctl(%d, VIDIOC_SUBSCRIBE_EVENT, %x): %d, %s",
+			dev->fd, event, errno, strerror(errno));
+		return 1;
+	}
+
+	return 0;
+}
+
+// Returns <0 on error, =0 on no events, =1 on event
+int deviceEventGet(Device *dev, struct v4l2_event *out) {
+	if (0 != ioctl(dev->fd, VIDIOC_DQEVENT, out)) {
+		if (errno == EAGAIN) {
+			// No events, wait
+			return 0;
+		}
+
+		LOGE("Failed to ioctl(%d, VIDIOC_DQEVENT): %d, %s",
+			dev->fd, errno, strerror(errno));
+		return -1;
+	}
+
+	return 1;
+}
+
 int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
 	LOGI("Enumerating formats for type=%s(%x) mbus_code=%s(%x)",
 		v4l2BufTypeName(st->type), st->type,

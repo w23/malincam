@@ -278,7 +278,8 @@ static struct Node *piOpenEncoderImpl(const char *name, uint32_t pixfmt, const c
 
 	const DeviceStreamPrepareOpts encoder_capture_opts = {
 		.buffers_count = 3,
-		.buffer_memory = BUFFER_MEMORY_MMAP,
+		//.buffer_memory = BUFFER_MEMORY_MMAP,
+		.buffer_memory = BUFFER_MEMORY_DMABUF_EXPORT,
 		.pixelformat = pixfmt,
 		.width = encoder_output_opts.width,
 		.height = encoder_output_opts.height,

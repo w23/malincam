@@ -14,6 +14,7 @@ typedef struct Buffer {
 typedef enum {
 	BUFFER_MEMORY_NONE,
 	BUFFER_MEMORY_MMAP,
+	//BUFFER_MEMORY_USERPTR,
 	BUFFER_MEMORY_DMABUF_EXPORT,
 	BUFFER_MEMORY_DMABUF_IMPORT,
 } buffer_memory_e;
@@ -63,8 +64,13 @@ typedef struct Device {
 	DeviceStream capture, output;
 } Device;
 
-struct Device* deviceOpen(const char *devname);
-void deviceClose(struct Device* dev);
+Device* deviceOpen(const char *devname);
+void deviceClose(Device* dev);
+
+int deviceEventSubscribe(Device *dev, uint32_t event);
+
+// Returns <0 on error, =0 on no events, =1 on event
+int deviceEventGet(Device *dev, struct v4l2_event *out);
 
 typedef struct DeviceStreamPrepareOpts {
 	buffer_memory_e buffer_memory;

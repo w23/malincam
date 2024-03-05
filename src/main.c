@@ -6,6 +6,7 @@
 #include "Pilatform.h"
 #include "pollinator.h"
 #include "pump.h"
+#include "UVC.h"
 
 #include <errno.h>
 #include <string.h> // strerror
@@ -20,8 +21,10 @@ uint64_t nowUs(void) {
 	return (ts.tv_sec * 1000000ul + ts.tv_nsec / 1000ul) - g_begin_us;
 }
 
-static int frame_count = 0;
 static uint64_t prev_frame_us = 0;
+
+#if 0
+static int frame_count = 0;
 
 static int readFrame(DeviceStream *st, FILE *fout) {
 	const Buffer *const buf = deviceStreamPullBuffer(st);
@@ -57,18 +60,7 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 
 	return 0;
 }
-
-struct Chain {
-	Array devices;
-};
-
-static struct {
-	Pump *cam2debay;
-	Pump *debay2enc;
-
-	int frame;
-	FILE *fout;
-} g;
+#endif
 
 static int bitSetFunc(int fd, uint32_t flags, uintptr_t arg1, uintptr_t arg2) {
 	if (flags&POLLIN_FD_ERR) {
@@ -86,12 +78,6 @@ int main(int argc, const char *argv[]) {
 	UNUSED(argc);
 	UNUSED(argv);
 	g_begin_us = nowUs();
-	if (argc != 3) {
-		fprintf(stderr, "Usage: %s filename.{mjpeg|h264} frame_count\n", argv[0]);
-		return 1;
-	}
-
-	const char *out_filename = argv[1];
 
 	Node *const cam = piOpenCamera();
 	if (!cam) {
@@ -111,13 +97,15 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	g.fout = fopen(out_filename, "wb");
-	if (!g.fout) {
-		LOGE("fopen(\"%s\") => %s (%d)", out_filename, strerror(errno), errno);
+	Node *const uvc = uvcOpen("/dev/video2");
+	if (!uvc) {
+		LOGE("Unable to open uvc-gadget device");
 		return 1;
 	}
 
-	// N. Start streaming
+	// FIXME only start streaming when uvc-gadget says so
+
+	// Start streaming
 	if (0 != nodeStart(enc)) {
 		LOGE("Unable to start encoder");
 		return 1;
@@ -133,18 +121,17 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	int max_frames = argc > 2 ? atoi(argv[2]) : 60;
-	max_frames = max_frames >= 0 ? max_frames : 60;
-
 	Pollinator pol;
 	pollinatorInit(&pol);
 
 	Pump *const cam_to_isp = pumpCreate(cam->output, isp->input);
 	Pump *const isp_to_enc = pumpCreate(isp->output, enc->input);
+	Pump *const enc_to_uvc = pumpCreate(enc->output, uvc->input);
 
 #define CAM_TO_ISP_BIT (1<<0)
 #define ISP_TO_ENC_BIT (1<<1)
-#define FRAME_READY_BIT (1<<2)
+#define ENC_TO_UVC_BIT (1<<2)
+#define UVC_EVENTS_BIT (1<<3)
 	uint32_t bits = 0;
 
 	pollinatorRegisterFd(&pol, cam->output->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
@@ -152,12 +139,11 @@ int main(int argc, const char *argv[]) {
 
 	// FIXME if using single-device isp /dev/video12, then this fd will be the same as input
 	pollinatorRegisterFd(&pol, isp->output->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT);
-	pollinatorRegisterFd(&pol, enc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT | FRAME_READY_BIT);
+	pollinatorRegisterFd(&pol, enc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT | ENC_TO_UVC_BIT);
+	pollinatorRegisterFd(&pol, uvc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ENC_TO_UVC_BIT | UVC_EVENTS_BIT);
 
 	prev_frame_us = nowUs();
-	g.frame = 0;
-	//while (frames > 0) { --frames;
-	while (frame_count < max_frames) {
+	for (;;) {
 		bits = 0;
 
 		//const uint64_t poll_pre = nowUs();
@@ -168,6 +154,10 @@ int main(int argc, const char *argv[]) {
 		if (result < 0) {
 			LOGE("Pollinator returned %d", result);
 			exit(1);
+		}
+
+		if (bits & UVC_EVENTS_BIT) {
+			uvcProcessEvents(uvc);
 		}
 
 		if (bits & CAM_TO_ISP_BIT) {
@@ -186,16 +176,19 @@ int main(int argc, const char *argv[]) {
 			}
 		}
 
-		if (bits & FRAME_READY_BIT)
-			readFrame(enc->output, g.fout);
+		if (bits & ENC_TO_UVC_BIT) {
+			const int result = pumpPump(enc_to_uvc);
+			if (0 != result) {
+				LOGE("enc-to-uvc pump error: %d", result);
+				return 1;
+			}
+		}
 	}
 
 	pumpDestroy(isp_to_enc);
 	pumpDestroy(cam_to_isp);
 
 	pollinatorFinalize(&pol);
-
-	fclose(g.fout);
 
 	nodeStop(cam);
 	nodeStop(isp);
