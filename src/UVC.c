@@ -16,6 +16,10 @@ typedef struct UvcGadget {
 	Node node;
 
 	Device *gadget;
+
+	struct {
+		uint32_t control_selector;
+	} state;
 } UvcGadget;
 
 static void uvcDtor(Node *node) {
@@ -73,20 +77,6 @@ struct Node *uvcOpen(const char *dev_name) {
 		goto fail;
 	}
 
-	const DeviceStreamPrepareOpts uvc_output_opts = {
-		.buffers_count = 3,
-		.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT,
-
-		.pixelformat = V4L2_PIX_FMT_MJPEG,
-		.width = 1332,
-		.height = 976,
-	};
-
-	if (0 != deviceStreamPrepare(&dev->output, &uvc_output_opts)) {
-		LOGE("%s: Unable to prepare uvc-gadget output stream", __func__);
-		goto fail;
-	}
-
 	UvcGadget *gadget = (UvcGadget*)calloc(1, sizeof(UvcGadget));
 	gadget->node.name = "uvc_gadget";
 	gadget->node.dtorFunc = uvcDtor;
@@ -115,36 +105,73 @@ static const char *requestName(int request) {
 	return "UNKNOWN";
 }
 
-static int processEventStreaming(UvcGadget *uvc, int request, int control_selector, struct uvc_request_data *response) {
+static int processEventSetupStreaming(UvcGadget *uvc, int request, int control_selector, struct uvc_request_data *response) {
 	UNUSED(uvc);
 	UNUSED(response);
-	LOGE("%s: not implemented (req=%s, cs=%d)", __func__, requestName(request), control_selector);
+	LOGE("%s(req=%s, cs=%d)", __func__, requestName(request), control_selector);
+
+	struct uvc_streaming_control *const stream_ctrl = (void*)&response->data;
 
 	switch (request) {
 		case UVC_GET_LEN:
+			// Reply with uvc_streaming_control structure size
+			// TODO why? spec ref?
+			response->data[0] = 0x00;
+			response->data[1] = sizeof(struct uvc_streaming_control);
+			response->length = 2;
 			break;
+
 		case UVC_GET_INFO:
+			// TODO spec ref?
+			response->data[0] = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET;
+			response->length = 1;
 			break;
 
 		case UVC_SET_CUR:
-			break;
-		case UVC_GET_CUR:
+			LOGE("%s: UVC_SET_CUR not implemented (cs=%d)", __func__, control_selector);
+			uvc->state.control_selector = control_selector;
+			response->length = sizeof(struct uvc_streaming_control);
 			break;
 
+		// TODO these are not the same when there are multiple resolutions and framerates
+		case UVC_GET_CUR:
 		case UVC_GET_MIN:
 		case UVC_GET_DEF:
 		case UVC_GET_MAX:
+			*stream_ctrl = (struct uvc_streaming_control) {
+				.bmHint = 1, // TODO why?
+				.bFormatIndex = 1, // TODO format index [1..N]
+				.bFrameIndex = 1, // TODO frame index [1..N]
+				.dwFrameInterval = 83333, // TODO not fixed
+				//.wKeyFrameRate = // TODO not set?
+				//.wPFrameRate = // TODO not set?
+				//.wCompQuality = // TODO not set?
+				//.wCompWindowSize = // TODO not set?
+				//.wDelay = // TODO not set?
+				.dwMaxVideoFrameSize = 1332 * 976 * 2, // TODO based on real w, h, format
+				.dwMaxPayloadTransferSize = 3072, // TODO why?
+				//.dwClockFrequency = // TODO not set?
+				.bmFramingInfo = 3, // TODO why?
+				.bPreferedVersion = 1, // TODO best format?
+				.bMinVersion = 1, // TODO first format
+				.bMaxVersion = 1, // TODO last format
+			};
+			response->length = sizeof(struct uvc_streaming_control);
 			break;
 
 		case UVC_GET_RES:
+			// TODO why?
+			memset(stream_ctrl, 0, sizeof(*stream_ctrl));
+			response->length = sizeof(struct uvc_streaming_control);
 			break;
 	}
 
 	return 0;
 }
 
-static int processEventClass(UvcGadget *uvc, const struct usb_ctrlrequest *ctrl, struct uvc_request_data *response) {
+static int processEventSetupClass(UvcGadget *uvc, const struct usb_ctrlrequest *ctrl, struct uvc_request_data *response) {
 	const int interface = ctrl->wIndex & 0xff;
+	const int control_selector = ctrl->wValue >> 8;
 
 // TODO these come from:
 // /sys/kernel/config/usb_gadget/g1/functions/uvc.0/streaming/bInterfaceNumber
@@ -155,12 +182,16 @@ static int processEventClass(UvcGadget *uvc, const struct usb_ctrlrequest *ctrl,
 
 	switch (interface) {
 		case INTERFACE_CONTROL:
-			LOGE("%s: control interface is not implemented", __func__);
-			return 0;
+			{
+				const int interface = ctrl->wIndex >> 8;
+				LOGE("%s: control interface is not implemented (interface=%d, bRequest=%s, control_selector=%d, length=%d)",
+					__func__, interface, requestName(ctrl->bRequest), control_selector, ctrl->wLength);
+				return 0;
+			}
+
 		case INTERFACE_STREAMING:
 			{
-				const int control_selector = ctrl->wValue >> 8;
-				return processEventStreaming(uvc, ctrl->bRequest, control_selector, response);
+				return processEventSetupStreaming(uvc, ctrl->bRequest, control_selector, response);
 			}
 		default:
 			LOGE("%s: unexpected interface %d", __func__, interface);
@@ -180,7 +211,7 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *ctrl)
 			break;
 
 		case USB_TYPE_CLASS:
-			if (0 != processEventClass(uvc, ctrl, &response)) {
+			if (0 != processEventSetupClass(uvc, ctrl, &response)) {
 				LOGE("%s: error processing USB_TYPE_CLASS event", __func__);
 			}
 			break;
@@ -198,7 +229,27 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *ctrl)
 static int processEventData(UvcGadget *uvc, const struct uvc_request_data *data) {
 	UNUSED(uvc);
 	UNUSED(data);
-	LOGE("%s: not implemented", __func__);
+	LOGE("%s: not implemented (length=%d), control_selector=%d", __func__, data->length, uvc->state.control_selector);
+
+	if (uvc->state.control_selector == UVC_VS_COMMIT_CONTROL) {
+    const struct uvc_streaming_control *const ctrl = (const void*)&data->data;
+		LOGI("%s: commit bFormatIndex=%d bFrameIndex=%d", __func__, ctrl->bFormatIndex, ctrl->bFrameIndex);
+
+		// TODO this is where we'd pick format, set it, recreate buffers, etc etc
+		const DeviceStreamPrepareOpts uvc_output_opts = {
+			.buffers_count = 3,
+			.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT,
+
+			.pixelformat = V4L2_PIX_FMT_MJPEG,
+			.width = 1332,
+			.height = 976,
+		};
+
+		if (0 != deviceStreamPrepare(&uvc->gadget->output, &uvc_output_opts)) {
+			LOGE("%s: Unable to prepare uvc-gadget output stream", __func__);
+		}
+	}
+
 	return 0;
 }
 
@@ -239,12 +290,13 @@ static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
 		break;
 
 	case UVC_EVENT_SETUP:
-		LOGI("%s: UVC_EVENT_SETUP (rtype=%02x, type=%02x, val=%04x, ind=%d, len=%d)", uvc->node.name,
-			(int)uvc_event->req.bRequestType,
-			(int)uvc_event->req.bRequest,
-			(int)uvc_event->req.wValue,
-			(int)uvc_event->req.wIndex,
-			(int)uvc_event->req.wLength);
+		LOGI("%s: UVC_EVENT_SETUP (bRequestType=%02x, bRequest=%02x, wValue=%04x, wIndex=%04x, wLength=%d)",
+			uvc->node.name,
+			uvc_event->req.bRequestType,
+			uvc_event->req.bRequest,
+			uvc_event->req.wValue,
+			uvc_event->req.wIndex,
+			uvc_event->req.wLength);
 		return processEventSetup(uvc, &uvc_event->req);
 
 	case UVC_EVENT_DATA:
