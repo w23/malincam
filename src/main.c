@@ -11,6 +11,12 @@
 #include <errno.h>
 #include <string.h> // strerror
 
+//#define TEST_UVC_ONLY
+#ifdef TEST_UVC_ONLY
+#include <unistd.h> // sleep
+#include <fcntl.h> // open
+#endif
+
 #include <time.h> // clock_gettime
 
 uint64_t g_begin_us = 0;
@@ -21,7 +27,9 @@ uint64_t nowUs(void) {
 	return (ts.tv_sec * 1000000ul + ts.tv_nsec / 1000ul) - g_begin_us;
 }
 
+#ifndef TEST_UVC_ONLY
 static uint64_t prev_frame_us = 0;
+#endif
 
 #if 0
 static int frame_count = 0;
@@ -64,7 +72,7 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 
 static int bitSetFunc(int fd, uint32_t flags, uintptr_t arg1, uintptr_t arg2) {
 	if (flags&POLLIN_FD_ERR) {
-		LOGE("Error registered on fd=%d", fd);
+		LOGE("Error registered on fd=%d, flags=%08x", fd, flags);
 		exit(1);
 	}
 
@@ -74,11 +82,62 @@ static int bitSetFunc(int fd, uint32_t flags, uintptr_t arg1, uintptr_t arg2) {
 	return POLLINATOR_CONTINUE;
 }
 
+#ifdef TEST_UVC_ONLY
+static int testUvc(void) {
+	Node *const uvc = uvcOpen("/dev/video2");
+	if (!uvc) {
+		LOGE("Unable to open uvc-gadget device");
+		return 1;
+	}
+
+	//int fd2 = open("/dev/video2", O_RDWR | O_NONBLOCK);
+
+	struct Pollinator *const pol = pollinatorCreate();
+
+	uint32_t bits = 0;
+	//pollinatorRegisterFd(&pol, uvc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, 1);
+	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+		//.fd = fd2,
+		.fd = uvc->input->dev_fd,
+		.event_bits = POLLIN_FD_EXCEPT,
+		.func =	bitSetFunc,
+		.arg1 = (uintptr_t)&bits,
+		.arg2 = 1,
+	});
+
+	for (;;) {
+		bits = 0;
+
+		const uint64_t poll_pre = nowUs();
+		const int result = pollinatorPoll(pol, 5000);
+		const uint64_t poll_after = nowUs();
+		LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+
+		if (result < 0) {
+			LOGE("Pollinator returned %d", result);
+			exit(1);
+		}
+
+		if (bits) {
+			//sleep(1);
+			//if (0 == uvcProcessEvents(uvc))
+				//sleep(1);
+			uvcProcessEvents(uvc);
+		}
+	}
+
+	return 0;
+}
+#endif // ifdef TEST_UVC_ONLY
+
 int main(int argc, const char *argv[]) {
 	UNUSED(argc);
 	UNUSED(argv);
 	g_begin_us = nowUs();
 
+#ifdef TEST_UVC_ONLY
+	return testUvc();
+#else
 	Node *const cam = piOpenCamera();
 	if (!cam) {
 		LOGE("Unable to open Rpi camera");
@@ -121,12 +180,11 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	Pollinator pol;
-	pollinatorInit(&pol);
+	struct Pollinator *const pol = pollinatorCreate();
 
 	Pump *const cam_to_isp = pumpCreate(cam->output, isp->input);
 	Pump *const isp_to_enc = pumpCreate(isp->output, enc->input);
-	Pump *const enc_to_uvc = pumpCreate(enc->output, uvc->input);
+	//Pump *const enc_to_uvc = pumpCreate(enc->output, uvc->input);
 
 #define CAM_TO_ISP_BIT (1<<0)
 #define ISP_TO_ENC_BIT (1<<1)
@@ -134,20 +192,46 @@ int main(int argc, const char *argv[]) {
 #define UVC_EVENTS_BIT (1<<3)
 	uint32_t bits = 0;
 
-	pollinatorRegisterFd(&pol, cam->output->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
-	pollinatorRegisterFd(&pol, isp->input->dev_fd, bitSetFunc, (uintptr_t)&bits, CAM_TO_ISP_BIT);
+	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+		.fd = cam->output->dev_fd,
+		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&bits,
+		.arg2 = CAM_TO_ISP_BIT});
+	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+		.fd = isp->input->dev_fd,
+		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&bits,
+		.arg2 = CAM_TO_ISP_BIT});
 
 	// FIXME if using single-device isp /dev/video12, then this fd will be the same as input
-	pollinatorRegisterFd(&pol, isp->output->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT);
-	pollinatorRegisterFd(&pol, enc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ISP_TO_ENC_BIT | ENC_TO_UVC_BIT);
-	pollinatorRegisterFd(&pol, uvc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, ENC_TO_UVC_BIT | UVC_EVENTS_BIT);
+	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+		.fd = isp->output->dev_fd,
+		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&bits,
+		.arg2 = ISP_TO_ENC_BIT});
+
+	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+		.fd = enc->input->dev_fd,
+		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&bits,
+		.arg2 = ISP_TO_ENC_BIT | ENC_TO_UVC_BIT});
+	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+		.fd = uvc->input->dev_fd,
+		.event_bits = POLLIN_FD_EXCEPT | POLLIN_FD_WRITE,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&bits,
+		.arg2 = ENC_TO_UVC_BIT | UVC_EVENTS_BIT});
 
 	prev_frame_us = nowUs();
 	for (;;) {
 		bits = 0;
 
 		//const uint64_t poll_pre = nowUs();
-		const int result = pollinatorPoll(&pol, 5000);
+		const int result = pollinatorPoll(pol, 5000);
 		//const uint64_t poll_after = nowUs();
 		//LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
 
@@ -176,19 +260,20 @@ int main(int argc, const char *argv[]) {
 			}
 		}
 
+		/*
 		if (bits & ENC_TO_UVC_BIT) {
 			const int result = pumpPump(enc_to_uvc);
 			if (0 != result) {
 				LOGE("enc-to-uvc pump error: %d", result);
 				return 1;
 			}
-		}
+		}*/
 	}
 
 	pumpDestroy(isp_to_enc);
 	pumpDestroy(cam_to_isp);
 
-	pollinatorFinalize(&pol);
+	pollinatorDestroy(pol);
 
 	nodeStop(cam);
 	nodeStop(isp);
@@ -199,4 +284,5 @@ int main(int argc, const char *argv[]) {
 	nodeDestroy(cam);
 
 	return 0;
+#endif // else ifdef TEST_UVC_ONLY
 }

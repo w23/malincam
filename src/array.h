@@ -26,6 +26,7 @@ void arrayDestroy(Array *array);
 
 // TODO void arrayFreeDtor(Array *array, dtor_f, void *user);
 
+#define arraySize(arr) ((arr)->size)
 #define arrayAt(arr, T, index) (((T*)((arr)->data)) + index)
 #define arrayAtConst(arr, T, index) (((const T*)((arr)->data)) + index)
 
