@@ -238,7 +238,7 @@ static int processEventData(UvcGadget *uvc, const struct uvc_request_data *data)
 		// TODO this is where we'd pick format, set it, recreate buffers, etc etc
 		const DeviceStreamPrepareOpts uvc_output_opts = {
 			.buffers_count = 3,
-			.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT,
+			.buffer_memory = BUFFER_MEMORY_USERPTR,
 
 			.pixelformat = V4L2_PIX_FMT_MJPEG,
 			.width = 1332,

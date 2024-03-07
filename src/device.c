@@ -337,6 +337,8 @@ static int bufferPrepare(DeviceStream *st, Buffer *const buf, buffer_memory_e bu
 		case BUFFER_MEMORY_DMABUF_EXPORT:
 			return bufferDmabufExport(st, buf);
 
+		case BUFFER_MEMORY_USERPTR:
+			// Nothing to do, buffer pointer will be provided externally
 		case BUFFER_MEMORY_DMABUF_IMPORT:
 			// Nothing to do, fds will be provided externally
 			return 0;
@@ -360,6 +362,9 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 		case BUFFER_MEMORY_MMAP:
 		case BUFFER_MEMORY_DMABUF_EXPORT:
 			req.memory = V4L2_MEMORY_MMAP;
+			break;
+		case BUFFER_MEMORY_USERPTR:
+			req.memory = V4L2_MEMORY_USERPTR;
 			break;
 		case BUFFER_MEMORY_DMABUF_IMPORT:
 			req.memory = V4L2_MEMORY_DMABUF;
@@ -455,6 +460,7 @@ static void streamDestroy(DeviceStream *st) {
 				break;
 
 			case BUFFER_MEMORY_NONE:
+			case BUFFER_MEMORY_USERPTR:
 			case BUFFER_MEMORY_DMABUF_IMPORT:
 				// Nothing to do
 				break;

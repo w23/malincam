@@ -15,7 +15,7 @@ static int passDmabufMP(const Buffer *src, Buffer *dst, int planes_count) {
 }
 
 static int passDmabufSPtoMP(const Buffer *src, Buffer *dst, int planes_count) {
-	UNUSED(planes_count);
+	ASSERT(planes_count == 1);
 
 	dst->buffer.m.planes[0].length = src->buffer.length;
 	dst->buffer.m.planes[0].data_offset = 0;
@@ -26,7 +26,7 @@ static int passDmabufSPtoMP(const Buffer *src, Buffer *dst, int planes_count) {
 }
 
 static int passDmabufMPtoSP(const Buffer *src, Buffer *dst, int planes_count) {
-	UNUSED(planes_count);
+	ASSERT(planes_count == 1);
 
 	dst->buffer.length = src->buffer.m.planes[0].length;
 	// FIXME this is impossible dst->buffer.data_offset = src->buffer.m.planes[0].data_offset;
@@ -38,7 +38,7 @@ static int passDmabufMPtoSP(const Buffer *src, Buffer *dst, int planes_count) {
 }
 
 static int passDmabufSP(const Buffer *src, Buffer *dst, int planes_count) {
-	UNUSED(planes_count);
+	ASSERT(planes_count == 1);
 
 	dst->buffer.length = src->buffer.length;
 	dst->buffer.bytesused = src->buffer.bytesused;
@@ -47,7 +47,37 @@ static int passDmabufSP(const Buffer *src, Buffer *dst, int planes_count) {
 	return 0;
 }
 
+static int passMmapToUserptrSP(const Buffer *src, Buffer *dst, int planes_count) {
+	ASSERT(planes_count == 1);
+
+	dst->buffer.m.userptr = (unsigned long)src->mapped[0];
+	dst->buffer.length = src->buffer.length;
+
+	return 0;
+}
+
 static buffer_pass_func *getPassFunc(const DeviceStream *src, const DeviceStream *dst) {
+	// FIXME verify plane compatibility
+	const int src_planes = STREAM_PLANES_COUNT(src);
+	const int dst_planes = STREAM_PLANES_COUNT(src);
+	if (src_planes != dst_planes) {
+		LOGE("%s: incompatible number of planes: src=%d dst=%d", __func__, src_planes, dst_planes);
+		return NULL;
+	}
+
+	const int src_mp = !!IS_STREAM_MPLANE(src);
+	const int dst_mp = !!IS_STREAM_MPLANE(dst);
+
+	// TODO table with all supported permutations
+	if (src->buffer_memory == BUFFER_MEMORY_MMAP && dst->buffer_memory == BUFFER_MEMORY_USERPTR) {
+		if (src_mp) {
+			LOGE("Pump only supports single-plane mmap to userptr pass");
+			return NULL;
+		}
+
+		return passMmapToUserptrSP;
+	}
+
 	if (src->buffer_memory != BUFFER_MEMORY_DMABUF_EXPORT) {
 		LOGE("Pump only supports DMABUF export as a source");
 		return NULL;
@@ -57,18 +87,6 @@ static buffer_pass_func *getPassFunc(const DeviceStream *src, const DeviceStream
 		LOGE("Pump only supports DMABUF import as a destination");
 		return NULL;
 	}
-	
-
-	// FIXME verify plane compatibility
-	const int src_planes = STREAM_PLANES_COUNT(src);
-	const int dst_planes = STREAM_PLANES_COUNT(src);
-	if (src_planes != dst_planes) {
-		LOGE("Incompatible number of planes: src=%d dst=%d", src_planes, dst_planes);
-		return NULL;
-	}
-
-	const int src_mp = !!IS_STREAM_MPLANE(src);
-	const int dst_mp = !!IS_STREAM_MPLANE(dst);
 	
 	buffer_pass_func *const table[] = {
 		passDmabufSP,
