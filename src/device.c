@@ -537,7 +537,7 @@ int deviceEventSubscribe(Device *dev, uint32_t event) {
 // Returns <0 on error, =0 on no events, =1 on event
 int deviceEventGet(Device *dev, struct v4l2_event *out) {
 	if (0 != ioctl(dev->fd, VIDIOC_DQEVENT, out)) {
-		if (errno == EAGAIN) {
+		if (errno == ENOENT) {
 			// No events, wait
 			return 0;
 		}
