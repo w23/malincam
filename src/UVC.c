@@ -226,28 +226,30 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *ctrl)
 	return 0;
 }
 
+static void uvcPrepare(UvcGadget *uvc) {
+	// TODO this is where we'd pick format, set it, recreate buffers, etc etc
+	const DeviceStreamPrepareOpts uvc_output_opts = {
+		.buffers_count = 3,
+		.buffer_memory = BUFFER_MEMORY_USERPTR,
+
+		.pixelformat = V4L2_PIX_FMT_MJPEG,
+		.width = 1332,
+		.height = 976,
+	};
+
+	if (0 != deviceStreamPrepare(&uvc->gadget->output, &uvc_output_opts)) {
+		LOGE("%s: Unable to prepare uvc-gadget output stream", __func__);
+	}
+}
+
 static int processEventData(UvcGadget *uvc, const struct uvc_request_data *data) {
 	UNUSED(uvc);
 	UNUSED(data);
 	LOGE("%s: not implemented (length=%d), control_selector=%d", __func__, data->length, uvc->state.control_selector);
 
 	if (uvc->state.control_selector == UVC_VS_COMMIT_CONTROL) {
-    const struct uvc_streaming_control *const ctrl = (const void*)&data->data;
+		const struct uvc_streaming_control *const ctrl = (const void*)&data->data;
 		LOGI("%s: commit bFormatIndex=%d bFrameIndex=%d", __func__, ctrl->bFormatIndex, ctrl->bFrameIndex);
-
-		// TODO this is where we'd pick format, set it, recreate buffers, etc etc
-		const DeviceStreamPrepareOpts uvc_output_opts = {
-			.buffers_count = 3,
-			.buffer_memory = BUFFER_MEMORY_USERPTR,
-
-			.pixelformat = V4L2_PIX_FMT_MJPEG,
-			.width = 1332,
-			.height = 976,
-		};
-
-		if (0 != deviceStreamPrepare(&uvc->gadget->output, &uvc_output_opts)) {
-			LOGE("%s: Unable to prepare uvc-gadget output stream", __func__);
-		}
 	}
 
 	return 0;
@@ -281,6 +283,7 @@ static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
 
 	case UVC_EVENT_STREAMON:
 		LOGI("%s: UVC_EVENT_STREAMON", uvc->node.name);
+		uvcPrepare(uvc);
 		// TODO start streaming
 		break;
 
