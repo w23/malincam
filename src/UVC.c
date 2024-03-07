@@ -316,6 +316,8 @@ static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
 int uvcProcessEvents(struct Node *uvc_node) {
 	UvcGadget *uvc = (UvcGadget*)uvc_node;
 
+	int events = 0;
+
 	for (;;) {
 		struct v4l2_event event;
 		const int result = deviceEventGet(uvc->gadget, &event);
@@ -327,9 +329,11 @@ int uvcProcessEvents(struct Node *uvc_node) {
 			return result;
 		}
 
+		++events;
+
 		if (0 != processEvent(uvc, &event))
 			return -1;
 	}
 
-	return 0;
+	return events;
 }
