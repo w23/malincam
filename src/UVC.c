@@ -80,7 +80,7 @@ struct Node *uvcOpen(const char *dev_name) {
 	UvcGadget *gadget = (UvcGadget*)calloc(1, sizeof(UvcGadget));
 	gadget->node.name = "uvc_gadget";
 	gadget->node.dtorFunc = uvcDtor;
-	gadget->node.output = &dev->output;
+	gadget->node.input = &dev->output;
 
 	gadget->gadget = dev;
 	
