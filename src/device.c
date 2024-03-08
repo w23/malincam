@@ -690,6 +690,13 @@ const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
 
 	// TODO check differences
 	ret->buffer = buf;
+	if (IS_STREAM_MPLANE(st)) {
+		ret->buffer.m.planes = ret->planes;
+		const int planes_count = (int)ret->buffer.length;
+		for (int i = 0; i < planes_count; ++i) {
+			ret->planes[i] = planes[i];
+		}
+	}
 	return ret;
 }
 
