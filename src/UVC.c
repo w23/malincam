@@ -19,6 +19,7 @@ typedef struct UvcGadget {
 
 	struct {
 		uint32_t control_selector;
+		int is_streaming;
 	} state;
 } UvcGadget;
 
@@ -231,6 +232,7 @@ static void uvcPrepare(UvcGadget *uvc) {
 	const DeviceStreamPrepareOpts uvc_output_opts = {
 		.buffers_count = 3,
 		.buffer_memory = BUFFER_MEMORY_USERPTR,
+		//.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT,
 
 		.pixelformat = V4L2_PIX_FMT_MJPEG,
 		.width = 1332,
@@ -284,12 +286,14 @@ static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
 	case UVC_EVENT_STREAMON:
 		LOGI("%s: UVC_EVENT_STREAMON", uvc->node.name);
 		uvcPrepare(uvc);
+		uvc->state.is_streaming = 1;
 		// TODO start streaming
 		break;
 
 	case UVC_EVENT_STREAMOFF:
 		LOGI("%s: UVC_EVENT_STREAMOFF", uvc->node.name);
 		// TODO stop streaming
+		uvc->state.is_streaming = 0;
 		break;
 
 	case UVC_EVENT_SETUP:
@@ -336,4 +340,9 @@ int uvcProcessEvents(struct Node *uvc_node) {
 	}
 
 	return events;
+}
+
+int uvcIsStreaming(struct Node *uvc_node) {
+	UvcGadget *uvc = (UvcGadget*)uvc_node;
+	return uvc->state.is_streaming;
 }

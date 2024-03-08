@@ -549,10 +549,23 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 				}
 			} else {
 				LOGI("  buf.m.offset = %d", buf->m.offset);
-				LOGI("  buf.length = %d", buf->length);
-				//LOGI("  buf.m.fd = %d", buf->m.fd);
 			}
-			//struct v4l2_plane *planes; // TODO
+			break;
+		case V4L2_MEMORY_USERPTR:
+			if (IS_TYPE_MPLANE(buf->type)) {
+				if (buf->m.planes) {
+					for (int i = 0; i < (int)buf->length; ++i) {
+						LOGI("  buf.m.planes[%d].bytesused = %d", i, buf->m.planes[i].bytesused);
+						LOGI("  buf.m.planes[%d].length = %d", i, buf->m.planes[i].length);
+						LOGI("  buf.m.planes[%d].m.userptr = %p", i, (void*) buf->m.planes[i].m.userptr);
+						LOGI("  buf.m.planes[%d].data_offset = %d", i, buf->m.planes[i].data_offset);
+					}
+				} else {
+					LOGI("  buf.m.planes = NULL");
+				}
+			} else {
+				LOGI("  buf.m.userptr = %p", (void*)buf->m.userptr);
+			}
 			break;
 
 		case V4L2_MEMORY_DMABUF:
@@ -569,11 +582,8 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 				}
 			} else {
 				LOGI("  buf.m.fd = %d", buf->m.fd);
-				LOGI("  buf.length = %d", buf->length);
 			}
-			//struct v4l2_plane *planes; // TODO
 			break;
-		case V4L2_MEMORY_USERPTR:
 		case V4L2_MEMORY_OVERLAY:
 			break;
 	}

@@ -184,7 +184,7 @@ int main(int argc, const char *argv[]) {
 
 	Pump *const cam_to_isp = pumpCreate(cam->output, isp->input);
 	Pump *const isp_to_enc = pumpCreate(isp->output, enc->input);
-	//Pump *const enc_to_uvc = pumpCreate(enc->output, uvc->input);
+	Pump *enc_to_uvc = NULL;
 
 #define CAM_TO_ISP_BIT (1<<0)
 #define ISP_TO_ENC_BIT (1<<1)
@@ -221,7 +221,7 @@ int main(int argc, const char *argv[]) {
 		.arg2 = ISP_TO_ENC_BIT | ENC_TO_UVC_BIT});
 	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
 		.fd = uvc->input->dev_fd,
-		.event_bits = POLLIN_FD_EXCEPT | POLLIN_FD_WRITE,
+		.event_bits = POLLIN_FD_EXCEPT | POLLIN_FD_WRITE | POLLIN_FD_READ,
 		.func = bitSetFunc,
 		.arg1 = (uintptr_t)&bits,
 		.arg2 = ENC_TO_UVC_BIT | UVC_EVENTS_BIT});
@@ -230,10 +230,13 @@ int main(int argc, const char *argv[]) {
 	for (;;) {
 		bits = 0;
 
-		//const uint64_t poll_pre = nowUs();
+		const uint64_t poll_pre = nowUs();
 		const int result = pollinatorPoll(pol, 5000);
-		//const uint64_t poll_after = nowUs();
-		//LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+		const uint64_t poll_after = nowUs();
+		if (!bits) {
+			LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+			bits = 0xff;
+		}
 
 		if (result < 0) {
 			LOGE("Pollinator returned %d", result);
@@ -260,14 +263,20 @@ int main(int argc, const char *argv[]) {
 			}
 		}
 
-		/*
-		if (bits & ENC_TO_UVC_BIT) {
+		if (uvcIsStreaming(uvc)) {
+			if (!enc_to_uvc) {
+				enc_to_uvc = pumpCreate(enc->output, uvc->input);
+			}
+		}
+
+
+		if (enc_to_uvc && bits & ENC_TO_UVC_BIT) {
 			const int result = pumpPump(enc_to_uvc);
 			if (0 != result) {
 				LOGE("enc-to-uvc pump error: %d", result);
 				return 1;
 			}
-		}*/
+		}
 	}
 
 	pumpDestroy(isp_to_enc);

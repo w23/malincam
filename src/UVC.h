@@ -7,3 +7,5 @@ struct Node;
 struct Node *uvcOpen(const char *dev_name);
 
 int uvcProcessEvents(struct Node *uvc_node);
+
+int uvcIsStreaming(struct Node *uvc_node);

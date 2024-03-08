@@ -52,6 +52,24 @@ static int passMmapToUserptrSP(const Buffer *src, Buffer *dst, int planes_count)
 
 	dst->buffer.m.userptr = (unsigned long)src->mapped[0];
 	dst->buffer.length = src->buffer.length;
+	dst->buffer.bytesused = src->buffer.bytesused;
+
+	return 0;
+}
+
+static int passMmapMPToUserptrSP(const Buffer *src, Buffer *dst, int planes_count) {
+	ASSERT(planes_count == 1);
+
+	dst->buffer.length = src->buffer.m.planes[0].length;
+	// FIXME this is impossible dst->buffer.data_offset = src->buffer.m.planes[0].data_offset;
+	// FIXME detect and complain
+	dst->buffer.bytesused = src->buffer.m.planes[0].bytesused;
+	dst->buffer.m.userptr = (unsigned long)src->mapped[0];
+
+	LOGI("Passed src:");
+	v4l2PrintBuffer(&src->buffer);
+	LOGI("To dst:");
+	v4l2PrintBuffer(&dst->buffer);
 
 	return 0;
 }
@@ -69,13 +87,18 @@ static buffer_pass_func *getPassFunc(const DeviceStream *src, const DeviceStream
 	const int dst_mp = !!IS_STREAM_MPLANE(dst);
 
 	// TODO table with all supported permutations
-	if (src->buffer_memory == BUFFER_MEMORY_MMAP && dst->buffer_memory == BUFFER_MEMORY_USERPTR) {
-		if (src_mp) {
-			LOGE("Pump only supports single-plane mmap to userptr pass");
-			return NULL;
+	if ((src->buffer_memory == BUFFER_MEMORY_MMAP || src->buffer_memory == BUFFER_MEMORY_DMABUF_EXPORT) && dst->buffer_memory == BUFFER_MEMORY_USERPTR) {
+		if (src_mp && !dst_mp) {
+			return passMmapMPToUserptrSP;
+		} else if (!src_mp && !dst_mp) {
+			return passMmapToUserptrSP;
 		}
 
-		return passMmapToUserptrSP;
+		LOGE("Pump doesn't support %s to %s mmap to userptr pass",
+			src_mp ? "MP" : "SP",
+			dst_mp ? "MP" : "SP");
+		return NULL;
+
 	}
 
 	if (src->buffer_memory != BUFFER_MEMORY_DMABUF_EXPORT) {

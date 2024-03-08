@@ -316,14 +316,17 @@ static int bufferMmap(DeviceStream *st, Buffer *const buf) {
 				LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
 				return err;
 			}
+
+			LOGI("buf.index=%d plane=%d mmap=%p", buf->buffer.index, i, buf->mapped[i]);
 		} // for planes
 	} else {
 		buf->mapped[0] = mmap(NULL, buf->buffer.length, PROT_READ | PROT_WRITE, MAP_SHARED, st->dev_fd, buf->buffer.m.offset);
 		const int err = errno;
-		if (buf->mapped == MAP_FAILED) {
+		if (buf->mapped[0] == MAP_FAILED) {
 			LOGE("Failed to mmap(%d, buffer[%d]): %d, %s", st->dev_fd, buf->buffer.index, errno, strerror(errno));
 			return err;
 		}
+		LOGI("buf.index=%d mmap=%p", buf->buffer.index, buf->mapped[0]);
 	}
 
 	return 0;
