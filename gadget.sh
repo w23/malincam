@@ -130,7 +130,10 @@ uvc_setup_bandwidth() {
 	echo 1 > $FUNCTION/streaming_interval
 
 	# streaming_maxpacket sets wMaxPacketSize. Valid values are 1024/2048/3072
+	# Need all three, otherwise `dwc2 3f980000.usb: dwc2_hsotg_ep_enable: No suitable fifo found` will happen
 	echo 3072 > $FUNCTION/streaming_maxpacket
+	echo 2048 > $FUNCTION/streaming_maxpacket
+	echo 1024 > $FUNCTION/streaming_maxpacket
 
 	# streaming_maxburst sets bMaxBurst. Valid values are 1..15
 	echo 1 > $FUNCTION/streaming_maxburst
@@ -170,7 +173,8 @@ uvc_destroy() {
 	echo "" > $GADGET/UDC || echo "$?"
 
 	rm $GADGET/configs/c.1/uvc.0 || echo "$?"
-	rm $GADGET/configs/c.1/strings/0x409 || echo "$?"
+	rm $GADGET/configs/c.1/strings/0x409/* || echo "$?"
+	rmdir $GADGET/configs/c.1/strings/0x409 || echo "$?"
 	rm $GADGET/configs/c.1 || echo "$?"
 
 	rm $FUNCTION/control/class/*/h || echo "$?"
