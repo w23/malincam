@@ -73,7 +73,7 @@ static int readFrame(DeviceStream *st, FILE *fout) {
 static int bitSetFunc(int fd, uint32_t flags, uintptr_t arg1, uintptr_t arg2) {
 	if (flags&POLLIN_FD_ERR) {
 		LOGE("Error registered on fd=%d, flags=%08x", fd, flags);
-		exit(1);
+		//exit(1);
 	}
 
 	uint32_t *const bits = (uint32_t*)arg1;

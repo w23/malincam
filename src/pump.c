@@ -2,6 +2,7 @@
 #include "common.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 static int passDmabufMP(const Buffer *src, Buffer *dst, int planes_count) {
 	for (int i = 0; i < planes_count; ++i) {
@@ -69,6 +70,26 @@ static int passMmapMPToUserptrSP(const Buffer *src, Buffer *dst, int planes_coun
 	return 0;
 }
 
+static int passMmapMPToMmapSP(const Buffer *src, Buffer *dst, int planes_count) {
+	ASSERT(planes_count == 1);
+
+	// FIXME this is impossible dst->buffer.data_offset = src->buffer.m.planes[0].data_offset;
+	// FIXME detect and complain
+	dst->buffer.bytesused = src->buffer.m.planes[0].bytesused;
+
+	if (dst->buffer.length < dst->buffer.bytesused) {
+		LOGE("%s: buffer size mismatch, src:", __func__);
+		v4l2PrintBuffer(&src->buffer);
+		LOGE("dst:");
+		v4l2PrintBuffer(&dst->buffer);
+	}
+	ASSERT(dst->buffer.length >= dst->buffer.bytesused);
+
+	memcpy(dst->mapped[0], src->mapped[0], dst->buffer.bytesused);
+
+	return 0;
+}
+
 typedef struct {
 	buffer_memory_e src_mem, dst_mem;
 	int src_mp, dst_mp;
@@ -117,6 +138,13 @@ static const PumpBufferPassTableEntry pass_func_table[] = {
 		.src_mp = 1,
 		.dst_mp = 0,
 		.func = passMmapMPToUserptrSP
+	},
+	{
+		.src_mem = BUFFER_MEMORY_MMAP,
+		.dst_mem = BUFFER_MEMORY_MMAP,
+		.src_mp = 1,
+		.dst_mp = 0,
+		.func = passMmapMPToMmapSP
 	},
 };
 
