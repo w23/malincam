@@ -379,7 +379,7 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 
 	LOGI("Requesting buffers: ");
 	v4l2PrintRequestBuffers(&req);
-	if (0 != ioctl(st->dev_fd, VIDIOC_REQBUFS, &req)) {
+	if (0 > ioctl(st->dev_fd, VIDIOC_REQBUFS, &req)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", st->dev_fd, errno, strerror(errno));
 		return -1;
 	}
