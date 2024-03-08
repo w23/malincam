@@ -653,7 +653,7 @@ int deviceStreamStop(DeviceStream *st) {
 	// TODO check whether all buffers are done?
 
 	if (0 != ioctl(st->dev_fd, VIDIOC_STREAMOFF, &st->type)) {
-		LOGE("Failed to ioctl(%d, VIDIOC_STREAMON, %s): %d, %s",
+		LOGE("Failed to ioctl(%d, VIDIOC_STREAMOFF, %s): %d, %s",
 			st->dev_fd, v4l2BufTypeName(st->type), errno, strerror(errno));
 		return 1;
 	}

@@ -198,6 +198,7 @@ int main(int argc, const char *argv[]) {
 		.func = bitSetFunc,
 		.arg1 = (uintptr_t)&bits,
 		.arg2 = CAM_TO_ISP_BIT});
+
 	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
 		.fd = isp->input->dev_fd,
 		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
@@ -219,6 +220,7 @@ int main(int argc, const char *argv[]) {
 		.func = bitSetFunc,
 		.arg1 = (uintptr_t)&bits,
 		.arg2 = ISP_TO_ENC_BIT | ENC_TO_UVC_BIT});
+
 	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
 		.fd = uvc->input->dev_fd,
 		.event_bits = POLLIN_FD_EXCEPT | POLLIN_FD_WRITE | POLLIN_FD_READ,
@@ -235,7 +237,7 @@ int main(int argc, const char *argv[]) {
 		const uint64_t poll_after = nowUs();
 		if (!bits) {
 			LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
-			bits = 0xff;
+			//bits = 0xff;
 		}
 
 		if (result < 0) {
@@ -265,6 +267,10 @@ int main(int argc, const char *argv[]) {
 
 		if (uvcIsStreaming(uvc)) {
 			if (!enc_to_uvc) {
+				if (0 != nodeStart(uvc)) {
+					LOGE("Unable to start uvc-gadget");
+					return 1;
+				}
 				enc_to_uvc = pumpCreate(enc->output, uvc->input);
 			}
 		}
