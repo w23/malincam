@@ -4,6 +4,8 @@
 
 #define UNUSED(a) ((void)(a));
 
+#define COUNTOF(a) (sizeof(a)/sizeof(a[0]))
+
 #define ASSERT(...) assert(__VA_ARGS__)
 
 #define LOG(prefix, fmt, ...) \

@@ -66,13 +66,59 @@ static int passMmapMPToUserptrSP(const Buffer *src, Buffer *dst, int planes_coun
 	dst->buffer.bytesused = src->buffer.m.planes[0].bytesused;
 	dst->buffer.m.userptr = (unsigned long)src->mapped[0];
 
-	LOGI("Passed src:");
-	v4l2PrintBuffer(&src->buffer);
-	LOGI("To dst:");
-	v4l2PrintBuffer(&dst->buffer);
-
 	return 0;
 }
+
+typedef struct {
+	buffer_memory_e src_mem, dst_mem;
+	int src_mp, dst_mp;
+	buffer_pass_func *func;
+} PumpBufferPassTableEntry;
+
+static const PumpBufferPassTableEntry pass_func_table[] = {
+	{
+		.src_mem = BUFFER_MEMORY_DMABUF_EXPORT,
+		.dst_mem = BUFFER_MEMORY_DMABUF_IMPORT,
+		.src_mp = 1,
+		.dst_mp = 1,
+		.func = passDmabufMP,
+	},
+	{
+		.src_mem = BUFFER_MEMORY_DMABUF_EXPORT,
+		.dst_mem = BUFFER_MEMORY_DMABUF_IMPORT,
+		.src_mp = 0,
+		.dst_mp = 0,
+		.func = passDmabufSP,
+	},
+	{
+		.src_mem = BUFFER_MEMORY_DMABUF_EXPORT,
+		.dst_mem = BUFFER_MEMORY_DMABUF_IMPORT,
+		.src_mp = 1,
+		.dst_mp = 0,
+		.func = passDmabufMPtoSP,
+	},
+	{
+		.src_mem = BUFFER_MEMORY_DMABUF_EXPORT,
+		.dst_mem = BUFFER_MEMORY_DMABUF_IMPORT,
+		.src_mp = 0,
+		.dst_mp = 1,
+		.func = passDmabufSPtoMP,
+	},
+	{
+		.src_mem = BUFFER_MEMORY_MMAP,
+		.dst_mem = BUFFER_MEMORY_USERPTR,
+		.src_mp = 0,
+		.dst_mp = 0,
+		.func = passMmapToUserptrSP,
+	},
+	{
+		.src_mem = BUFFER_MEMORY_MMAP,
+		.dst_mem = BUFFER_MEMORY_USERPTR,
+		.src_mp = 1,
+		.dst_mp = 0,
+		.func = passMmapMPToUserptrSP
+	},
+};
 
 static buffer_pass_func *getPassFunc(const DeviceStream *src, const DeviceStream *dst) {
 	// FIXME verify plane compatibility
@@ -86,39 +132,27 @@ static buffer_pass_func *getPassFunc(const DeviceStream *src, const DeviceStream
 	const int src_mp = !!IS_STREAM_MPLANE(src);
 	const int dst_mp = !!IS_STREAM_MPLANE(dst);
 
-	// TODO table with all supported permutations
-	if ((src->buffer_memory == BUFFER_MEMORY_MMAP || src->buffer_memory == BUFFER_MEMORY_DMABUF_EXPORT) && dst->buffer_memory == BUFFER_MEMORY_USERPTR) {
-		if (src_mp && !dst_mp) {
-			return passMmapMPToUserptrSP;
-		} else if (!src_mp && !dst_mp) {
-			return passMmapToUserptrSP;
-		}
+	for (int i = 0; i < (int)COUNTOF(pass_func_table); ++i) {
+		const PumpBufferPassTableEntry *const te = pass_func_table + i;
+		if (src->buffer_memory != te->src_mem)
+			continue;
+		if (dst->buffer_memory != te->dst_mem)
+			continue;
+		if (src_mp != te->src_mp)
+			continue;
+		if (dst_mp != te->dst_mp)
+			continue;
 
-		LOGE("Pump doesn't support %s to %s mmap to userptr pass",
-			src_mp ? "MP" : "SP",
-			dst_mp ? "MP" : "SP");
-		return NULL;
-
+		return te->func;
 	}
 
-	if (src->buffer_memory != BUFFER_MEMORY_DMABUF_EXPORT) {
-		LOGE("Pump only supports DMABUF export as a source");
-		return NULL;
-	}
+	LOGE("Pump doesn't support passing mem=%d:%s to mem=%d:%s",
+		src->buffer_memory,
+		src_mp ? "MP" : "SP",
+		dst->buffer_memory,
+		dst_mp ? "MP" : "SP");
 
-	if (dst->buffer_memory != BUFFER_MEMORY_DMABUF_IMPORT) {
-		LOGE("Pump only supports DMABUF import as a destination");
-		return NULL;
-	}
-	
-	buffer_pass_func *const table[] = {
-		passDmabufSP,
-		passDmabufSPtoMP,
-		passDmabufMPtoSP,
-		passDmabufMP
-	};
-
-	return table[src_mp * 2 + dst_mp];
+	return NULL;
 }
 
 Pump *pumpCreate(DeviceStream *src, DeviceStream *dst) {
@@ -182,9 +216,16 @@ int pumpPump(Pump *pump /* TODO, uint32_t hint*/) {
 		if (!buf)
 			break;
 
+		/*
+		LOGI("Pulled buffer from fd=%d ptr=%p (next=%d):", pump->src.st->dev_fd, (void*)buf, pump->src.next_in_queue);
+		v4l2PrintBuffer(&buf->buffer);
+		*/
+
 		if (pump->src.next_in_queue >= 0) {
 			LOGI("Skipping buffer[%d]", pump->src.next_in_queue);
+			//v4l2PrintBuffer(&buf->buffer);
 			const int result = deviceStreamPushBuffer(pump->src.st, pump->src.st->buffers + pump->src.next_in_queue);
+			//v4l2PrintBuffer(&buf->buffer);
 			if (result != 0) {
 				LOGE("Unable to return source buffer[%d] back", pump->src.next_in_queue);
 				return result;
@@ -193,6 +234,14 @@ int pumpPump(Pump *pump /* TODO, uint32_t hint*/) {
 
 		// Replace
 		pump->src.next_in_queue = buf->buffer.index;
+
+		/*
+		{
+			const Buffer *const sbuf = pump->src.st->buffers + pump->src.next_in_queue;
+			LOGI("next_in_queue=%d from fd=%d ptr=%p:", pump->src.next_in_queue, pump->src.st->dev_fd, (void*)sbuf);
+			v4l2PrintBuffer(&sbuf->buffer);
+		}
+		*/
 	}
 
 	// 3. Pass source buffers to destination
