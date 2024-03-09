@@ -137,18 +137,46 @@ static int v4l2_enum_input(int fd) {
 }
 */
 
+#if 0
+static void v4l2_enum_controls(Device *const dev) {
+	//arrayInit(&dev->ctrls, struct v4l2_query_ext_ctrl);
+
+	struct v4l2_queryctrl qctrl = {0};
+	for (int i = 0;; i++) {
+		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+		if (0 > ioctl(dev->fd, VIDIOC_QUERYCTRL, &qctrl)) {
+			LOGI("Total controls: %d", i);
+			break;
+		}
+
+		LOGI(" ctrl[%d]: id=(%d)%s type=%s name='%s' range=[%d.+%u.%d] default=%d flags=%08x", i,
+			qctrl.id, v4l2CtrlIdName(qctrl.id),
+			v4l2CtrlTypeName(qctrl.type),
+			qctrl.name,
+			qctrl.minimum, qctrl.step, qctrl.maximum,
+			qctrl.default_value,
+			qctrl.flags
+		);
+
+		// TODO qctrl.type == V4L2_CTRL_TYPE_MENU
+
+		//arrayAppend(&dev->ctrls, &qctrl);
+	}
+}
+#endif
+
 static void v4l2_enum_controls_ext(Device *const dev) {
 	arrayInit(&dev->ctrls, struct v4l2_query_ext_ctrl);
 
 	struct v4l2_query_ext_ctrl qctrl = {0};
 	for (int i = 0;; i++) {
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
-		if (0 > ioctl(dev->fd, VIDIOC_QUERYCTRL, &qctrl)) {
-			LOGI("Total controls: %d", i);
+		if (0 > ioctl(dev->fd, VIDIOC_QUERY_EXT_CTRL, &qctrl)) {
+			LOGI("Total ext controls: %d", i);
 			break;
 		}
 
-		LOGI(" ctrl[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] default=%lld flags=%08x", i,
+		LOGI(" ctrl_ext[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] default=%lld flags=%08x", i,
 			qctrl.id, v4l2CtrlIdName(qctrl.id),
 			v4l2CtrlTypeName(qctrl.type),
 			qctrl.name,
@@ -514,8 +542,8 @@ struct Device* deviceOpen(const char *devname) {
 	// TODO set frameinterval, use VIDIOC_S_PARM
 
 	Device* const ret = (Device*)malloc(sizeof(Device));
-	v4l2_enum_controls_ext(ret);
 	*ret = dev;
+	v4l2_enum_controls_ext(ret);
 	return ret;
 
 fail:
