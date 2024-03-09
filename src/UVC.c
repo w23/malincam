@@ -152,6 +152,8 @@ static int processEventSetupStreaming(UvcGadget *uvc, int request, int control_s
 				.dwMaxVideoFrameSize = 1332 * 976 * 2, // TODO based on real w, h, format
 
 				// Use 1024, otherwise `No fast enough alt setting for requested bandwidth` will happen in dmesg
+				// TODO further reading: https://www.thegoodpenguin.co.uk/blog/multiple-uvc-cameras-on-linux/
+				// TODO compute real bandwidth based on max frame size and framerate
 				.dwMaxPayloadTransferSize = 1024, // TODO why?
 				//.dwMaxPayloadTransferSize = 3072, // TODO why?
 

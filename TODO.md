@@ -14,12 +14,18 @@
     - It also doesn't work for some reason.
         → decided not to use
 - [x] Use /dev/video31 (??) to encode MJPEG.
-- [ ] Make UVC gadget device to send all this crap into.
-    - [ ] set it up
-    - [ ] open v4l
-    - [ ] feed it
+- [x] Make UVC gadget device to send all this crap into.
+    - [x] set it up
+    - [x] open v4l
+    - [x] feed it
+- [ ] configurable debug messages
+- [ ] graceful stream on/off
+- [ ] controls
+- [ ] sensor flipping and format
 - [ ] expand to h=992 instead of cropping to 976
       - possibly set isp to 992, and then crop image_encode to 990
 - [ ] crop from center
-- [ ] controls
-- [ ] sensor flipping and format
+- [ ] resolution selector
+- [ ] framerate selector
+- [ ] format selector
+- [ ] more camera types
