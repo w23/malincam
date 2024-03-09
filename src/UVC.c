@@ -150,7 +150,11 @@ static int processEventSetupStreaming(UvcGadget *uvc, int request, int control_s
 				//.wCompWindowSize = // TODO not set?
 				//.wDelay = // TODO not set?
 				.dwMaxVideoFrameSize = 1332 * 976 * 2, // TODO based on real w, h, format
-				.dwMaxPayloadTransferSize = 3072, // TODO why?
+
+				// Use 1024, otherwise `No fast enough alt setting for requested bandwidth` will happen in dmesg
+				.dwMaxPayloadTransferSize = 1024, // TODO why?
+				//.dwMaxPayloadTransferSize = 3072, // TODO why?
+
 				//.dwClockFrequency = // TODO not set?
 				.bmFramingInfo = 3, // TODO why?
 				.bPreferedVersion = 1, // TODO best format?
