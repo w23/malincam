@@ -62,6 +62,8 @@ typedef struct Device {
 	struct v4l2_capability caps;
 	uint32_t this_device_caps;
 
+	Array ctrls;
+
 	DeviceStream capture, output;
 } Device;
 
@@ -110,3 +112,5 @@ void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse);
 const char *v4l2MbusFmtName(uint32_t format);
 void v4l2PrintSelection(const struct v4l2_selection* sel);
 const char* v4l2SelTgtName(uint32_t target);
+const char* v4l2CtrlIdName(uint32_t ctrl_id);
+const char* v4l2CtrlTypeName(uint32_t ctrl_type);

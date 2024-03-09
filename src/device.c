@@ -137,15 +137,29 @@ static int v4l2_enum_input(int fd) {
 }
 */
 
-static int v4l2_enum_controls_ext(int fd) {
-	struct v4l2_queryctrl qctrl;
-	qctrl.id = V4L2_CTRL_FLAG_NEXT_CTRL;
-	while (0 == ioctl(fd, VIDIOC_QUERYCTRL, &qctrl)) {
-		LOGI("qctrl.name = %s", qctrl.name);
-		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
-	}
+static void v4l2_enum_controls_ext(Device *const dev) {
+	struct v4l2_query_ext_ctrl qctrl = {0};
 
-	return 0;
+	arrayInit(&dev->ctrls, struct v4l2_query_ext_ctrl);
+
+	for (int i = 0;; i++) {
+		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
+		if (0 == ioctl(dev->fd, VIDIOC_QUERYCTRL, &qctrl)) {
+			LOGI("Total controls: %d", i);
+			break;
+		}
+
+		LOGI(" ctrl[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] default=%lld flags=%08x", i,
+			qctrl.id, v4l2CtrlIdName(qctrl.id),
+			v4l2CtrlTypeName(qctrl.type),
+			qctrl.name,
+			qctrl.minimum, qctrl.step, qctrl.maximum,
+			qctrl.default_value,
+			qctrl.flags
+		);
+
+		arrayAppend(&dev->ctrls, &qctrl);
+	}
 }
 
 static int v4l2Selection(int fd, enum v4l2_buf_type type, uint32_t cmd, uint32_t target, struct v4l2_rect *rekt) {
@@ -492,7 +506,6 @@ struct Device* deviceOpen(const char *devname) {
 	}
 
 	//v4l2_enum_input(dev.fd);
-	v4l2_enum_controls_ext(dev.fd);
 
 	// TODO VIDIOC_ENUM_FRAMEINTERVALS
 	// Depends on selected resolution. So cannot really query before the resolution is picked.
@@ -500,6 +513,7 @@ struct Device* deviceOpen(const char *devname) {
 	// TODO set frameinterval, use VIDIOC_S_PARM
 
 	Device* const ret = (Device*)malloc(sizeof(Device));
+	v4l2_enum_controls_ext(ret);
 	*ret = dev;
 	return ret;
 
@@ -516,6 +530,8 @@ void deviceClose(struct Device* dev) {
 
 	streamDestroy(&dev->capture);
 	streamDestroy(&dev->output);
+
+	arrayDestroy(&dev->ctrls);
 
 	close(dev->fd);
 	free(dev);
