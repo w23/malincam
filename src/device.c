@@ -700,10 +700,13 @@ const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
 			ret->planes[i] = planes[i];
 		}
 	}
+
+	//LOGI("%s: %d %p:", __func__, ret->buffer.index, (void*)ret);
 	return ret;
 }
 
 int deviceStreamPushBuffer(DeviceStream *st, const Buffer *buf) {
+	//LOGI("%s: %d %p:", __func__, buf->buffer.index, (void*)buf);
 	if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
 			st->dev_fd, errno, strerror(errno));

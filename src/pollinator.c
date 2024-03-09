@@ -75,12 +75,14 @@ int pollinatorPoll(Pollinator *p, int timeout_ms) {
 		const int index = e->data.u32;
 		const PollinatorFd *const fd = arrayAtConst(&p->fds, PollinatorFd, index);
 
+		/*
 		LOGI("[e=%d/%d] fd=%d revents=%s%s%s%s", i, count, fd->fd,
 			(e->events & EPOLLIN) ? "EPOLLIN " : "",
 			(e->events & EPOLLOUT) ? "EPOLLOUT " : "",
 			(e->events & EPOLLPRI) ? "EPOLLPRI " : "",
 			(e->events & EPOLLERR) ? "EPOLLERR " : ""
 		);
+		*/
 
 		const uint32_t flags = 0
 			| ((e->events & EPOLLIN) ? POLLIN_FD_READ : 0)
