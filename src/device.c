@@ -138,13 +138,12 @@ static int v4l2_enum_input(int fd) {
 */
 
 static void v4l2_enum_controls_ext(Device *const dev) {
-	struct v4l2_query_ext_ctrl qctrl = {0};
-
 	arrayInit(&dev->ctrls, struct v4l2_query_ext_ctrl);
 
+	struct v4l2_query_ext_ctrl qctrl = {0};
 	for (int i = 0;; i++) {
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
-		if (0 == ioctl(dev->fd, VIDIOC_QUERYCTRL, &qctrl)) {
+		if (0 > ioctl(dev->fd, VIDIOC_QUERYCTRL, &qctrl)) {
 			LOGI("Total controls: %d", i);
 			break;
 		}
@@ -157,6 +156,8 @@ static void v4l2_enum_controls_ext(Device *const dev) {
 			qctrl.default_value,
 			qctrl.flags
 		);
+
+		// TODO qctrl.type == V4L2_CTRL_TYPE_MENU
 
 		arrayAppend(&dev->ctrls, &qctrl);
 	}
