@@ -1,4 +1,5 @@
 #include "subdev.h"
+#include "device.h"
 
 #include "common.h"
 
@@ -222,6 +223,7 @@ Subdev *subdevOpen(const char *name, int pads_count) {
 
 	Subdev *out = malloc(sizeof(*out));
 	*out = sd;
+	out->controls = v4l2ControlsEnum(out->fd);
 	return out;
 
 fail:
@@ -237,6 +239,8 @@ fail:
 void subdevClose(Subdev *sd) {
 	if (!sd)
 		return;
+
+	arrayDestroy(&sd->controls);
 
 	if (sd->fd > 0)
 		close(sd->fd);

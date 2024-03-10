@@ -165,18 +165,20 @@ static void v4l2_enum_controls(Device *const dev) {
 }
 #endif
 
-static void v4l2_enum_controls_ext(Device *const dev) {
-	arrayInit(&dev->ctrls, struct v4l2_query_ext_ctrl);
+Array v4l2ControlsEnum(int fd) {
+	Array array;
+	arrayInit(&array, V4l2Control);
 
 	struct v4l2_query_ext_ctrl qctrl = {0};
 	for (int i = 0;; i++) {
 		qctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
-		if (0 > ioctl(dev->fd, VIDIOC_QUERY_EXT_CTRL, &qctrl)) {
+		if (0 > ioctl(fd, VIDIOC_QUERY_EXT_CTRL, &qctrl)) {
 			LOGI("Total ext controls: %d", i);
 			break;
 		}
 
-		LOGI(" ctrl_ext[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] default=%lld flags=%08x", i,
+		LOGI("[fd=%d] ctrl_ext[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] default=%lld flags=%08x",
+			fd, i,
 			qctrl.id, v4l2CtrlIdName(qctrl.id),
 			v4l2CtrlTypeName(qctrl.type),
 			qctrl.name,
@@ -186,9 +188,16 @@ static void v4l2_enum_controls_ext(Device *const dev) {
 		);
 
 		// TODO qctrl.type == V4L2_CTRL_TYPE_MENU
+		// TODO filter for "useful" controls
 
-		arrayAppend(&dev->ctrls, &qctrl);
+		const V4l2Control control = {
+			.query.ctrl_ext = qctrl,
+		};
+
+		arrayAppend(&array, &control);
 	}
+
+	return array;
 }
 
 static int v4l2Selection(int fd, enum v4l2_buf_type type, uint32_t cmd, uint32_t target, struct v4l2_rect *rekt) {
@@ -543,7 +552,7 @@ struct Device* deviceOpen(const char *devname) {
 
 	Device* const ret = (Device*)malloc(sizeof(Device));
 	*ret = dev;
-	v4l2_enum_controls_ext(ret);
+	ret->controls = v4l2ControlsEnum(ret->fd);
 	return ret;
 
 fail:
@@ -560,7 +569,7 @@ void deviceClose(struct Device* dev) {
 	streamDestroy(&dev->capture);
 	streamDestroy(&dev->output);
 
-	arrayDestroy(&dev->ctrls);
+	arrayDestroy(&dev->controls);
 
 	close(dev->fd);
 	free(dev);

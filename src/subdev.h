@@ -1,5 +1,7 @@
 #pragma once
 
+#include "array.h"
+
 #include <linux/v4l2-subdev.h>
 #include <stdint.h>
 
@@ -16,6 +18,8 @@ typedef struct Subdev {
 
 	SubdevPad *pads;
 	int pads_count;
+
+	Array controls;
 } Subdev;
 
 //Subdev *subdevOpen(const char *name);

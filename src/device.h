@@ -62,7 +62,7 @@ typedef struct Device {
 	struct v4l2_capability caps;
 	uint32_t this_device_caps;
 
-	Array ctrls;
+	Array controls;
 
 	DeviceStream capture, output;
 } Device;
@@ -84,6 +84,19 @@ typedef struct DeviceStreamPrepareOpts {
 
 	uint32_t crop_width, crop_height;
 } DeviceStreamPrepareOpts;
+
+typedef struct V4l2Control {
+	//TODO int is_ext;
+	union {
+		struct v4l2_query_ext_ctrl ctrl_ext;
+		// TODO struct v4l2_query_ext_ctrl ctrl_ext;
+	} query;
+	// TODO int64_t value;
+} V4l2Control;
+
+// Enumerates controls (ext) for a given fd, device or subdevice
+// Returns Array<V4l2Control>
+Array v4l2ControlsEnum(int fd);
 
 // @mbus_code is optional, set to 0 if not known
 int deviceStreamQueryFormats(DeviceStream *st, int mbus_code);
