@@ -304,13 +304,38 @@ static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
 		break;
 
 	case UVC_EVENT_SETUP:
-		LOGI("%s: UVC_EVENT_SETUP (bRequestType=%02x, bRequest=%02x, wValue=%04x, wIndex=%04x, wLength=%d)",
-			uvc->node.name,
-			uvc_event->req.bRequestType,
-			uvc_event->req.bRequest,
-			uvc_event->req.wValue,
-			uvc_event->req.wIndex,
-			uvc_event->req.wLength);
+		{
+			const char transfer_direction = (uvc_event->req.bRequestType & USB_DIR_IN) ? '>' : '<';
+
+			char type = '?';
+			switch (uvc_event->req.bRequestType & USB_TYPE_MASK) {
+				case USB_TYPE_STANDARD: type = 'S'; break;
+				case USB_TYPE_CLASS: type = 'C'; break;
+				case USB_TYPE_VENDOR: type = 'V'; break;
+			}
+
+			char recipient = '?';
+			switch (uvc_event->req.bRequestType & USB_RECIP_MASK) {
+				case USB_RECIP_DEVICE: recipient = 'D'; break;
+				case USB_RECIP_INTERFACE: recipient = 'I'; break;
+				case USB_RECIP_ENDPOINT: recipient = 'E'; break;
+				case USB_RECIP_OTHER: recipient = 'O'; break;
+				case USB_RECIP_PORT: recipient = 'P'; break;
+				case USB_RECIP_RPIPE: recipient = 'R'; break;
+			}
+
+			const int if_or_endpoint = uvc_event->req.wIndex & 0xff;
+			const int entity_id = uvc_event->req.wIndex >> 8;
+
+			LOGI("%s: UVC_EVENT_SETUP (bRequestType=%c%c%c(%02x), bRequest=%s(%02x), wIndex=[ent=%d if=%d](%04x), wValue=%04x, wLength=%d)",
+				uvc->node.name,
+				transfer_direction, type, recipient, uvc_event->req.bRequestType,
+				requestName(uvc_event->req.bRequest), uvc_event->req.bRequest,
+				entity_id, if_or_endpoint, uvc_event->req.wIndex,
+				uvc_event->req.wValue,
+				uvc_event->req.wLength);
+		}
+
 		return processEventSetup(uvc, &uvc_event->req);
 
 	case UVC_EVENT_DATA:
