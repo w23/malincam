@@ -562,6 +562,12 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) 
 	}
 
 	const UsbUvcControlDispatchArgs args = usbUvcControlDispatchArgs(req, &response);
+
+	LOGI("%s: interface=%s(%d) entity=%s(%d) control=%s(%d)", __func__,
+		usbUvcIntefaceName(args.interface), args.interface,
+		usbUvcEntityName(args.interface, args.entity_id), args.entity_id,
+		usbUvcControlName(args.interface, args.entity_id, args.control_selector), args.control_selector);
+
 	const int result = usbUvcDispatchRequest(&uvc->usb.dispatch, uvc, args);
 	switch (result) {
 		case USB_UVC_DISPATCH_NO_INTERFACE:
