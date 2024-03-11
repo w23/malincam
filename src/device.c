@@ -62,8 +62,11 @@ static int streamInit(DeviceStream *st, int fd, uint32_t buffer_type) {
 	if (0 != streamGetFormat(&stream, fd)) {
 		goto fail;
 	}
+	
+	/* TODO verbose logs
 	LOGI("Current format:");
 	v4l2PrintFormat(&stream.format);
+	*/
 
 	*st = stream;
 	return 0;
@@ -177,17 +180,60 @@ Array v4l2ControlsEnum(int fd) {
 			break;
 		}
 
-		LOGI("[fd=%d] ctrl_ext[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] default=%lld flags=%08x",
+		struct v4l2_ext_control ctrl_val[] = {
+			{
+				.id = qctrl.id,
+				.size = 0,
+			}
+		};
+
+		struct v4l2_ext_controls ctrl_vals = {
+			.which = V4L2_CTRL_WHICH_CUR_VAL,
+			.count = COUNTOF(ctrl_val),
+			.controls = ctrl_val,
+		};
+
+		if (0 > ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrl_vals)) {
+			LOGE("ioctl(VIDIOC_G_EXT_CTRLS[.id=%d]) failed: %s %d",
+				qctrl.id, strerror(errno), errno);
+		}
+
+		LOGI("[fd=%d] ctrl_ext[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] def=%lld cur=%d flags=%08x",
 			fd, i,
 			qctrl.id, v4l2CtrlIdName(qctrl.id),
 			v4l2CtrlTypeName(qctrl.type),
 			qctrl.name,
 			qctrl.minimum, qctrl.step, qctrl.maximum,
 			qctrl.default_value,
+			ctrl_val[0].value,
 			qctrl.flags
 		);
 
-		// TODO qctrl.type == V4L2_CTRL_TYPE_MENU
+		v4l2PrintControlFlags(qctrl.flags);
+
+		if (qctrl.type == V4L2_CTRL_TYPE_MENU || qctrl.type == V4L2_CTRL_TYPE_INTEGER_MENU) {
+			for (int j = qctrl.minimum; j <= qctrl.maximum; j++) {
+				struct v4l2_querymenu menu = {
+					.id = qctrl.id,
+					.index = j,
+				};
+
+				if (0 > ioctl(fd, VIDIOC_QUERYMENU, &menu)) {
+					LOGE("ioctl(VIDIOC_QUERYMENU[id=%d index=%d]) failed: %s (%d)",
+						menu.id, menu.index, strerror(errno), errno);
+					break;
+				}
+
+				if (qctrl.type == V4L2_CTRL_TYPE_MENU) {
+					LOGI("  menuitem[%d]: %sname=%s", menu.index,
+						((int)menu.index == ctrl_val[0].value) ? "-> " : "", menu.name);
+				} else {
+					LOGI("  menuitem[%d]: %svalue=%lld", menu.index,
+						((int)menu.index == ctrl_val[0].value) ? "-> " : "", menu.value);
+				}
+			}
+		}
+
 		// TODO filter for "useful" controls
 
 		const V4l2Control control = {
@@ -429,15 +475,20 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 			return EINVAL;
 	}
 
+	/* TODO verbose logs
 	LOGI("Requesting buffers: ");
 	v4l2PrintRequestBuffers(&req);
+	*/
+
 	if (0 > ioctl(st->dev_fd, VIDIOC_REQBUFS, &req)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_REQBUFS): %d, %s", st->dev_fd, errno, strerror(errno));
 		return -1;
 	}
 
+	/* TODO verbose logs
 	LOGI("Requested buffers: ");
 	v4l2PrintRequestBuffers(&req);
+	*/
 
 	st->buffers = calloc(req.count, sizeof(*st->buffers));
 	st->buffers_count = req.count;
@@ -461,8 +512,10 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 			goto fail;
 		}
 
+		/* TODO verbose logs
 		LOGI("Queried buffer %d:", i);
 		v4l2PrintBuffer(&buf->buffer);
+		*/
 
 		if (0 != bufferPrepare(st, buf, buffer_memory)) {
 			LOGE("Error preparing buffer %d", i);

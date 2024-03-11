@@ -127,3 +127,4 @@ void v4l2PrintSelection(const struct v4l2_selection* sel);
 const char* v4l2SelTgtName(uint32_t target);
 const char* v4l2CtrlIdName(uint32_t ctrl_id);
 const char* v4l2CtrlTypeName(uint32_t ctrl_type);
+void v4l2PrintControlFlags(uint32_t flags);

@@ -2089,3 +2089,23 @@ const char* v4l2CtrlTypeName(uint32_t ctrl_type) {
 		default: return "UNKNOWN";
 	}
 }
+
+void v4l2PrintControlFlags(uint32_t flags) {
+#define CONTROL_FLAGS_LIST(X) \
+	X(V4L2_CTRL_FLAG_DISABLED) \
+	X(V4L2_CTRL_FLAG_GRABBED) \
+	X(V4L2_CTRL_FLAG_READ_ONLY) \
+	X(V4L2_CTRL_FLAG_UPDATE) \
+	X(V4L2_CTRL_FLAG_INACTIVE) \
+	X(V4L2_CTRL_FLAG_SLIDER) \
+	X(V4L2_CTRL_FLAG_WRITE_ONLY) \
+	X(V4L2_CTRL_FLAG_VOLATILE) \
+	X(V4L2_CTRL_FLAG_HAS_PAYLOAD) \
+	X(V4L2_CTRL_FLAG_EXECUTE_ON_WRITE) \
+	X(V4L2_CTRL_FLAG_MODIFY_LAYOUT) \
+	X(V4L2_CTRL_FLAG_DYNAMIC_ARRAY) \
+
+#define X(bit) if (flags & bit) LOGI(" %s", #bit);
+	CONTROL_FLAGS_LIST(X)
+#undef X
+}
