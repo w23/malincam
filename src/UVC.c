@@ -166,7 +166,7 @@ static int usbUvcRouteRequest(const UsbUvcRoute *route, struct UvcGadget *uvc, c
 						return UVC_REQ_ERROR_NO_ERROR;
 
 					case UVC_SET_CUR:
-						if (0 == (ctrl->control_selector & UVC_CONTROL_CAP_SET)) {
+						if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_SET)) {
 							LOGE("%s: interface=%d entity=%d control=%d doesn't support SET requests",
 								__func__, args.interface, args.entity_id, args.control_selector);
 							return UVC_REQ_ERROR_INVALID_REQUEST;
@@ -178,7 +178,7 @@ static int usbUvcRouteRequest(const UsbUvcRoute *route, struct UvcGadget *uvc, c
 					case UVC_GET_DEF:
 					case UVC_GET_MAX:
 					case UVC_GET_RES:
-						if (0 == (ctrl->control_selector & UVC_CONTROL_CAP_GET)) {
+						if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_GET)) {
 							LOGE("%s: interface=%d entity=%d control=%d doesn't support GET requests",
 								__func__, args.interface, args.entity_id, args.control_selector);
 							return UVC_REQ_ERROR_INVALID_REQUEST;
