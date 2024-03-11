@@ -223,7 +223,7 @@ Subdev *subdevOpen(const char *name, int pads_count) {
 
 	Subdev *out = malloc(sizeof(*out));
 	*out = sd;
-	out->controls = v4l2ControlsEnum(out->fd);
+	out->controls = v4l2ControlsCreate(out->fd);
 	return out;
 
 fail:
@@ -240,7 +240,7 @@ void subdevClose(Subdev *sd) {
 	if (!sd)
 		return;
 
-	arrayDestroy(&sd->controls);
+	v4l2ControlsDestroy(&sd->controls);
 
 	if (sd->fd > 0)
 		close(sd->fd);

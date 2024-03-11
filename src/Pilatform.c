@@ -108,6 +108,54 @@ struct Node *piOpenCamera(void) {
 		goto fail;
 	}
 
+	// Flip sensor and bayer format if needed
+	// TODO there should be a better way to handle this, this is too ad-hoc here.
+	// Probably the sensor itself should report its orientation and support flipping if it's capable.
+	// TODO should it expose the layout-flipped bayer MBUS code? Or should it expose capable formats? ...
+	{
+		V4l2Control *const sensor_rotation = v4l2ControlGet(&sensor->controls, V4L2_CID_CAMERA_SENSOR_ROTATION);
+		if (sensor_rotation) {
+			LOGI("Sensor rotation=%d", (int)sensor_rotation->value);
+			switch (sensor_rotation->value) {
+				case 0:
+					// TODO check no flip?
+					break;
+
+				case 180:
+					{
+						V4l2Control *const hflip = v4l2ControlGet(&sensor->controls, V4L2_CID_HFLIP);
+						if (!hflip) {
+							LOGE("Sensor rotation=%d, but HFLIP is not supported", (int)sensor_rotation->value);
+							break;
+						}
+
+						if (hflip->value) {
+							LOGI("Sensor is already HFLIPped");
+							break;
+						}
+
+						const int result = v4l2ControlSet(&sensor->controls, hflip, 1);
+						if (result != 0) {
+							LOGE("Sensor rotation=%d HFLIP=%d failed: %s %d",
+								(int)sensor_rotation->value, 1, strerror(result), result);
+							break;
+						}
+
+						LOGI("Sensor rotation=%d HFLIP=%d modify_layout=%d",
+							(int)sensor_rotation->value, 1, !!(hflip->query.flags & V4L2_CTRL_FLAG_MODIFY_LAYOUT));
+
+						break;
+					}
+
+				// TODO case 90: break;
+				// TODO case 270: break;
+				default:
+					LOGE("Unsupported sensor rotation=%d", (int)sensor_rotation->value);
+					break;
+			}
+		}
+	}
+
 	PiCamera *node = calloc(sizeof(PiCamera), 1);
 
 	node->node.name = "camera";

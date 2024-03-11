@@ -1,6 +1,7 @@
 #pragma once
 
 #include "array.h"
+#include "device.h"
 
 #include <linux/v4l2-subdev.h>
 #include <stdint.h>
@@ -19,7 +20,7 @@ typedef struct Subdev {
 	SubdevPad *pads;
 	int pads_count;
 
-	Array controls;
+	V4l2Controls controls;
 } Subdev;
 
 //Subdev *subdevOpen(const char *name);
