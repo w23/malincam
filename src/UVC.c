@@ -161,7 +161,7 @@ static int usbUvcRouteRequest(const UsbUvcRoute *route, struct UvcGadget *uvc, c
 						return UVC_REQ_ERROR_NO_ERROR;
 
 					case UVC_GET_INFO:
-						response->data[0] = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET;
+						response->data[0] = ctrl->info_caps;
 						response->length = 1;
 						return UVC_REQ_ERROR_NO_ERROR;
 
@@ -258,7 +258,6 @@ static const UsbUvcEntity uvc_vc_entities[] = {
 
 static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlHandleArgs args) {
 	UNUSED(uvc);
-	//LOGE("%s(req=%s, cs=%d)", __func__, requestName(request), control_selector);
 
 	struct uvc_streaming_control *const stream_ctrl = (void*)&args.response->data;
 
