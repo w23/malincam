@@ -180,22 +180,33 @@ Array v4l2ControlsEnum(int fd) {
 			break;
 		}
 
-		struct v4l2_ext_control ctrl_val[] = {
-			{
-				.id = qctrl.id,
-				.size = 0,
+		// TODO filter out unsupported controls
+
+		struct v4l2_ext_control ctrl_val = {
+			.id = qctrl.id,
+			.size = 0,
+		};
+
+		// Save the default value in case it's not readable, or reading resulted in error
+		int64_t value = qctrl.default_value;
+
+		if (!(qctrl.flags & V4L2_CTRL_FLAG_WRITE_ONLY) && !(qctrl.flags & V4L2_CTRL_FLAG_HAS_PAYLOAD)) {
+			struct v4l2_ext_controls ctrl_vals = {
+				.which = V4L2_CTRL_WHICH_CUR_VAL,
+				.count = 1,
+				.controls = &ctrl_val,
+			};
+
+			if (0 > ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrl_vals)) {
+				LOGE("ioctl(VIDIOC_G_EXT_CTRLS[.id=%d]) failed: %s %d",
+					qctrl.id, strerror(errno), errno);
+			} else {
+				if (qctrl.type == V4L2_CTRL_TYPE_INTEGER64) {
+					value = ctrl_val.value64;
+				} else {
+					value = ctrl_val.value;
+				}
 			}
-		};
-
-		struct v4l2_ext_controls ctrl_vals = {
-			.which = V4L2_CTRL_WHICH_CUR_VAL,
-			.count = COUNTOF(ctrl_val),
-			.controls = ctrl_val,
-		};
-
-		if (0 > ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrl_vals)) {
-			LOGE("ioctl(VIDIOC_G_EXT_CTRLS[.id=%d]) failed: %s %d",
-				qctrl.id, strerror(errno), errno);
 		}
 
 		LOGI("[fd=%d] ctrl_ext[%d]: id=(%d)%s type=%s name='%s' range=[%lld.+%llu.%lld] def=%lld cur=%d flags=%08x",
@@ -205,7 +216,7 @@ Array v4l2ControlsEnum(int fd) {
 			qctrl.name,
 			qctrl.minimum, qctrl.step, qctrl.maximum,
 			qctrl.default_value,
-			ctrl_val[0].value,
+			ctrl_val.value,
 			qctrl.flags
 		);
 
@@ -226,18 +237,17 @@ Array v4l2ControlsEnum(int fd) {
 
 				if (qctrl.type == V4L2_CTRL_TYPE_MENU) {
 					LOGI("  menuitem[%d]: %sname=%s", menu.index,
-						((int)menu.index == ctrl_val[0].value) ? "-> " : "", menu.name);
+						((int)menu.index == ctrl_val.value) ? "-> " : "", menu.name);
 				} else {
 					LOGI("  menuitem[%d]: %svalue=%lld", menu.index,
-						((int)menu.index == ctrl_val[0].value) ? "-> " : "", menu.value);
+						((int)menu.index == ctrl_val.value) ? "-> " : "", menu.value);
 				}
 			}
 		}
 
-		// TODO filter for "useful" controls
-
 		const V4l2Control control = {
-			.query.ctrl_ext = qctrl,
+			.query = qctrl,
+			.value = value,
 		};
 
 		arrayAppend(&array, &control);

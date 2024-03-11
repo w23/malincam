@@ -75,6 +75,9 @@ int deviceEventSubscribe(Device *dev, uint32_t event);
 // Returns <0 on error, =0 on no events, =1 on event
 int deviceEventGet(Device *dev, struct v4l2_event *out);
 
+// TODO split into:
+// - set format
+// - streamon (buffers); streamoff should destroy buffers
 typedef struct DeviceStreamPrepareOpts {
 	buffer_memory_e buffer_memory;
 	uint32_t buffers_count;
@@ -86,12 +89,9 @@ typedef struct DeviceStreamPrepareOpts {
 } DeviceStreamPrepareOpts;
 
 typedef struct V4l2Control {
-	//TODO int is_ext;
-	union {
-		struct v4l2_query_ext_ctrl ctrl_ext;
-		// TODO struct v4l2_query_ext_ctrl ctrl_ext;
-	} query;
-	// TODO int64_t value;
+	struct v4l2_query_ext_ctrl query;
+	//struct v4l2_ext_control value;
+	int64_t value;
 } V4l2Control;
 
 // Enumerates controls (ext) for a given fd, device or subdevice
