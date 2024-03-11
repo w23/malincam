@@ -68,18 +68,139 @@ static const char *usbSpeedName(enum usb_device_speed speed) {
 	return "UNKNOWN";
 }
 
-// Returns UVC_REQ_*
+static const char *usbUvcIntefaceName(int interface) {
+	switch (interface) {
+		case UVC_INTF_VIDEO_CONTROL: return "UVC_INTF_VIDEO_CONTROL";
+		case UVC_INTF_VIDEO_STREAMING: return "UVC_INTF_VIDEO_STREAMING";
+		default: return "UNKNOWN";
+	}
+}
+
+static const char *usbUvcEntityName(int interface, int entity_id) {
+	switch(interface) {
+		case UVC_INTF_VIDEO_CONTROL:
+			switch (entity_id) {
+				case UVC_VC_ENT_INTERFACE: return "UVC_VC_ENT_INTERFACE";
+				case UVC_VC_ENT_CAMERA_TERMINAL_ID: return "UVC_VC_ENT_CAMERA_TERMINAL_ID";
+				case UVC_VC_ENT_PROCESSING_UNIT_ID: return "UVC_VC_ENT_PROCESSING_UNIT_ID";
+				case UVC_VC_ENT_OUTPUT_TERMINAL_ID: return "UVC_VC_ENT_OUTPUT_TERMINAL_ID";
+				default: return "UNKNOWN";
+			}
+		case UVC_INTF_VIDEO_STREAMING:
+			switch (entity_id) {
+				case 0: return "UVC_VS_ENT_INTERFACE";
+				default: return "UNKNOWN";
+			}
+		default: return "UNKNOWN";
+	}
+}
+
+static const char *usbUvcControlName(int interface, int entity_id, int control_selector) {
+	switch(interface) {
+		case UVC_INTF_VIDEO_CONTROL:
+			switch (entity_id) {
+				case UVC_VC_ENT_INTERFACE:
+					switch (control_selector) {
+						case UVC_VC_CONTROL_UNDEFINED: return "UVC_VC_CONTROL_UNDEFINED";
+						case UVC_VC_VIDEO_POWER_MODE_CONTROL: return "UVC_VC_VIDEO_POWER_MODE_CONTROL";
+						case UVC_VC_REQUEST_ERROR_CODE_CONTROL: return "UVC_VC_REQUEST_ERROR_CODE_CONTROL";
+						default: return "UNKNOWN";
+					}
+				case UVC_VC_ENT_CAMERA_TERMINAL_ID:
+					switch (control_selector) {
+						case UVC_CT_CONTROL_UNDEFINED: return "UVC_CT_CONTROL_UNDEFINED";
+						case UVC_CT_SCANNING_MODE_CONTROL: return "UVC_CT_SCANNING_MODE_CONTROL";
+						case UVC_CT_AE_MODE_CONTROL: return "UVC_CT_AE_MODE_CONTROL";
+						case UVC_CT_AE_PRIORITY_CONTROL: return "UVC_CT_AE_PRIORITY_CONTROL";
+						case UVC_CT_EXPOSURE_TIME_ABSOLUTE_CONTROL: return "UVC_CT_EXPOSURE_TIME_ABSOLUTE_CONTROL";
+						case UVC_CT_EXPOSURE_TIME_RELATIVE_CONTROL: return "UVC_CT_EXPOSURE_TIME_RELATIVE_CONTROL";
+						case UVC_CT_FOCUS_ABSOLUTE_CONTROL: return "UVC_CT_FOCUS_ABSOLUTE_CONTROL";
+						case UVC_CT_FOCUS_RELATIVE_CONTROL: return "UVC_CT_FOCUS_RELATIVE_CONTROL";
+						case UVC_CT_FOCUS_AUTO_CONTROL: return "UVC_CT_FOCUS_AUTO_CONTROL";
+						case UVC_CT_IRIS_ABSOLUTE_CONTROL: return "UVC_CT_IRIS_ABSOLUTE_CONTROL";
+						case UVC_CT_IRIS_RELATIVE_CONTROL: return "UVC_CT_IRIS_RELATIVE_CONTROL";
+						case UVC_CT_ZOOM_ABSOLUTE_CONTROL: return "UVC_CT_ZOOM_ABSOLUTE_CONTROL";
+						case UVC_CT_ZOOM_RELATIVE_CONTROL: return "UVC_CT_ZOOM_RELATIVE_CONTROL";
+						case UVC_CT_PANTILT_ABSOLUTE_CONTROL: return "UVC_CT_PANTILT_ABSOLUTE_CONTROL";
+						case UVC_CT_PANTILT_RELATIVE_CONTROL: return "UVC_CT_PANTILT_RELATIVE_CONTROL";
+						case UVC_CT_ROLL_ABSOLUTE_CONTROL: return "UVC_CT_ROLL_ABSOLUTE_CONTROL";
+						case UVC_CT_ROLL_RELATIVE_CONTROL: return "UVC_CT_ROLL_RELATIVE_CONTROL";
+						case UVC_CT_PRIVACY_CONTROL: return "UVC_CT_PRIVACY_CONTROL";
+						default: return "UNKNOWN";
+					}
+				case UVC_VC_ENT_PROCESSING_UNIT_ID:
+					switch (control_selector) {
+						case UVC_PU_CONTROL_UNDEFINED: return "UVC_PU_CONTROL_UNDEFINED";
+						case UVC_PU_BACKLIGHT_COMPENSATION_CONTROL: return "UVC_PU_BACKLIGHT_COMPENSATION_CONTROL";
+						case UVC_PU_BRIGHTNESS_CONTROL: return "UVC_PU_BRIGHTNESS_CONTROL";
+						case UVC_PU_CONTRAST_CONTROL: return "UVC_PU_CONTRAST_CONTROL";
+						case UVC_PU_GAIN_CONTROL: return "UVC_PU_GAIN_CONTROL";
+						case UVC_PU_POWER_LINE_FREQUENCY_CONTROL: return "UVC_PU_POWER_LINE_FREQUENCY_CONTROL";
+						case UVC_PU_HUE_CONTROL: return "UVC_PU_HUE_CONTROL";
+						case UVC_PU_SATURATION_CONTROL: return "UVC_PU_SATURATION_CONTROL";
+						case UVC_PU_SHARPNESS_CONTROL: return "UVC_PU_SHARPNESS_CONTROL";
+						case UVC_PU_GAMMA_CONTROL: return "UVC_PU_GAMMA_CONTROL";
+						case UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL: return "UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL";
+						case UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL: return "UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL";
+						case UVC_PU_WHITE_BALANCE_COMPONENT_CONTROL: return "UVC_PU_WHITE_BALANCE_COMPONENT_CONTROL";
+						case UVC_PU_WHITE_BALANCE_COMPONENT_AUTO_CONTROL: return "UVC_PU_WHITE_BALANCE_COMPONENT_AUTO_CONTROL";
+						case UVC_PU_DIGITAL_MULTIPLIER_CONTROL: return "UVC_PU_DIGITAL_MULTIPLIER_CONTROL";
+						case UVC_PU_DIGITAL_MULTIPLIER_LIMIT_CONTROL: return "UVC_PU_DIGITAL_MULTIPLIER_LIMIT_CONTROL";
+						case UVC_PU_HUE_AUTO_CONTROL: return "UVC_PU_HUE_AUTO_CONTROL";
+						case UVC_PU_ANALOG_VIDEO_STANDARD_CONTROL: return "UVC_PU_ANALOG_VIDEO_STANDARD_CONTROL";
+						case UVC_PU_ANALOG_LOCK_STATUS_CONTROL: return "UVC_PU_ANALOG_LOCK_STATUS_CONTROL";
+						default: return "UNKNOWN";
+					}
+				case UVC_VC_ENT_OUTPUT_TERMINAL_ID:
+					switch (control_selector) {
+						default: return "UNKNOWN";
+					}
+				default: return "UNKNOWN";
+			}
+		case UVC_INTF_VIDEO_STREAMING:
+			switch (entity_id) {
+				case 0:
+					switch (control_selector) {
+						case UVC_VS_CONTROL_UNDEFINED: return "UVC_VS_CONTROL_UNDEFINED";
+						case UVC_VS_PROBE_CONTROL: return "UVC_VS_PROBE_CONTROL";
+						case UVC_VS_COMMIT_CONTROL: return "UVC_VS_COMMIT_CONTROL";
+						case UVC_VS_STILL_PROBE_CONTROL: return "UVC_VS_STILL_PROBE_CONTROL";
+						case UVC_VS_STILL_COMMIT_CONTROL: return "UVC_VS_STILL_COMMIT_CONTROL";
+						case UVC_VS_STILL_IMAGE_TRIGGER_CONTROL: return "UVC_VS_STILL_IMAGE_TRIGGER_CONTROL";
+						case UVC_VS_STREAM_ERROR_CODE_CONTROL: return "UVC_VS_STREAM_ERROR_CODE_CONTROL";
+						case UVC_VS_GENERATE_KEY_FRAME_CONTROL: return "UVC_VS_GENERATE_KEY_FRAME_CONTROL";
+						case UVC_VS_UPDATE_FRAME_SEGMENT_CONTROL: return "UVC_VS_UPDATE_FRAME_SEGMENT_CONTROL";
+						case UVC_VS_SYNC_DELAY_CONTROL: return "UVC_VS_SYNC_DELAY_CONTROL";
+						default: return "UNKNOWN";
+					}
+				default: return "UNKNOWN";
+			}
+		default: return "UNKNOWN";
+	}
+}
+
 typedef struct {
 	int interface;
 	int entity_id;
 	int control_selector;
 	const struct usb_ctrlrequest *req;
 	struct uvc_request_data *response;
-} UsbUvcControlHandleArgs;
+} UsbUvcControlDispatchArgs;
+
+UsbUvcControlDispatchArgs usbUvcControlDispatchArgs(const struct usb_ctrlrequest *req, struct uvc_request_data *response) {
+	return (UsbUvcControlDispatchArgs){
+		.interface = req->wIndex & 0xff,
+		.entity_id = req->wIndex >> 8,
+		.control_selector = req->wValue >> 8,
+		.req = req,
+		.response = response,
+	};
+}
 
 struct UvcGadget;
 
-typedef int (UsbUvcControlHandleFunc)(struct UvcGadget *uvc, UsbUvcControlHandleArgs args);
+// Returns UVC_REQ_*
+typedef int (UsbUvcControlHandleFunc)(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args);
 
 typedef struct {
 	int control_selector;
@@ -119,90 +240,94 @@ typedef struct {
 typedef struct {
 	const UsbUvcInterface *interfaces;
 	int interfaces_count;
-} UsbUvcRoute;
+} UsbUvcDispatch;
 
-#define USB_UVC_ROUTE_NO_INTERFACE -1
-#define USB_UVC_ROUTE_NO_ENTITY -2
-#define USB_UVC_ROUTE_NO_CONTROL -3
-// Values >= 0 are UVC_REQ_ERROR_*
-static int usbUvcRouteRequest(const UsbUvcRoute *route, struct UvcGadget *uvc, const struct usb_ctrlrequest *req, struct uvc_request_data *response) {
-
-	const UsbUvcControlHandleArgs args = {
-		.interface = req->wIndex & 0xff,
-		.entity_id = req->wIndex >> 8,
-		.control_selector = req->wValue >> 8,
-		.req = req,
-		.response = response,
-	};
-
-	// Find interface
-	for (int i = 0; i < route->interfaces_count; ++i) {
-		const UsbUvcInterface *const intf = route->interfaces + i;
-		if (intf->interface != args.interface)
-			continue;
-
-		// Find entity
-		for (int j = 0; j < intf->entities_count; ++j) {
-			const UsbUvcEntity *const ent = intf->entities + j;
-			if (ent->entity_id != args.entity_id)
-				continue;
-
-			// Find control
-			for (int k = 0; k < ent->controls_count; ++k) {
-				const UsbUvcControl *const ctrl = ent->controls + k;
-				if (ctrl->control_selector != args.control_selector)
-					continue;
-
-				switch (req->bRequest) {
-					case UVC_GET_LEN:
-						response->data[0] = ctrl->len >> 8;
-						response->data[1] = ctrl->len & 0xff;
-						response->length = 2;
-						return UVC_REQ_ERROR_NO_ERROR;
-
-					case UVC_GET_INFO:
-						response->data[0] = ctrl->info_caps;
-						response->length = 1;
-						return UVC_REQ_ERROR_NO_ERROR;
-
-					case UVC_SET_CUR:
-						if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_SET)) {
-							LOGE("%s: interface=%d entity=%d control=%d doesn't support SET requests",
-								__func__, args.interface, args.entity_id, args.control_selector);
-							return UVC_REQ_ERROR_INVALID_REQUEST;
-						}
-						return ctrl->handle(uvc, args);
-
-					case UVC_GET_CUR:
-					case UVC_GET_MIN:
-					case UVC_GET_DEF:
-					case UVC_GET_MAX:
-					case UVC_GET_RES:
-						if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_GET)) {
-							LOGE("%s: interface=%d entity=%d control=%d doesn't support GET requests",
-								__func__, args.interface, args.entity_id, args.control_selector);
-							return UVC_REQ_ERROR_INVALID_REQUEST;
-						}
-						return ctrl->handle(uvc, args);
-
-					default:
-						LOGE("%s: interface=%d entity=%d control=%d invalid request=%d",
-							__func__, args.interface, args.entity_id, args.control_selector,
-							req->bRequest);
-						return UVC_REQ_ERROR_INVALID_REQUEST;
-				}
-			}
-
-			// Interface and entity found, but they don't have this control
-			return USB_UVC_ROUTE_NO_CONTROL;
-		}
-
-		// Interface found, but it has no such entity
-		return USB_UVC_ROUTE_NO_ENTITY;
+static const UsbUvcInterface *usbUvcDispatchFindInterface(const UsbUvcDispatch *dispatch, int interface) {
+	for (int i = 0; i < dispatch->interfaces_count; ++i) {
+		const UsbUvcInterface *const intf = dispatch->interfaces + i;
+		if (intf->interface == interface)
+			return intf;
 	}
 
-	// No interface with this id found
-	return USB_UVC_ROUTE_NO_INTERFACE;
+	return NULL;
+}
+
+static const UsbUvcEntity *usbUvcDispatchFindEntity(const UsbUvcInterface *intf, int entity_id) {
+	for (int j = 0; j < intf->entities_count; ++j) {
+		const UsbUvcEntity *const ent = intf->entities + j;
+		if (ent->entity_id == entity_id)
+			return ent;
+	}
+
+	return NULL;
+}
+
+static const UsbUvcControl *usbUvcDispatchFindControl(const UsbUvcEntity *ent, int control_selector) {
+	for (int k = 0; k < ent->controls_count; ++k) {
+		const UsbUvcControl *const ctrl = ent->controls + k;
+		if (ctrl->control_selector == control_selector)
+			return ctrl;
+	}
+
+	return NULL;
+}
+
+#define USB_UVC_DISPATCH_NO_INTERFACE -1
+#define USB_UVC_DISPATCH_NO_ENTITY -2
+#define USB_UVC_DISPATCH_NO_CONTROL -3
+// Values >= 0 are UVC_REQ_ERROR_*
+static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
+
+	const UsbUvcInterface *const intf = usbUvcDispatchFindInterface(dispatch, args.interface);
+	if (!intf)
+		return USB_UVC_DISPATCH_NO_INTERFACE;
+
+	const UsbUvcEntity *const ent = usbUvcDispatchFindEntity(intf, args.entity_id);
+	if (!ent)
+		return USB_UVC_DISPATCH_NO_ENTITY;
+
+	const UsbUvcControl *const ctrl = usbUvcDispatchFindControl(ent, args.control_selector);
+	if (!ctrl)
+		return USB_UVC_DISPATCH_NO_CONTROL;
+
+	switch (args.req->bRequest) {
+		case UVC_GET_LEN:
+			args.response->data[0] = ctrl->len >> 8;
+			args.response->data[1] = ctrl->len & 0xff;
+			args.response->length = 2;
+			return UVC_REQ_ERROR_NO_ERROR;
+
+		case UVC_GET_INFO:
+			args.response->data[0] = ctrl->info_caps;
+			args.response->length = 1;
+			return UVC_REQ_ERROR_NO_ERROR;
+
+		case UVC_SET_CUR:
+			if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_SET)) {
+				LOGE("%s: interface=%d entity=%d control=%d doesn't support SET requests",
+					__func__, args.interface, args.entity_id, args.control_selector);
+				return UVC_REQ_ERROR_INVALID_REQUEST;
+			}
+			return ctrl->handle(uvc, args);
+
+		case UVC_GET_CUR:
+		case UVC_GET_MIN:
+		case UVC_GET_DEF:
+		case UVC_GET_MAX:
+		case UVC_GET_RES:
+			if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_GET)) {
+				LOGE("%s: interface=%d entity=%d control=%d doesn't support GET requests",
+					__func__, args.interface, args.entity_id, args.control_selector);
+				return UVC_REQ_ERROR_INVALID_REQUEST;
+			}
+			return ctrl->handle(uvc, args);
+
+		default:
+			LOGE("%s: interface=%d entity=%d control=%d invalid request=%d",
+				__func__, args.interface, args.entity_id, args.control_selector,
+				args.req->bRequest);
+			return UVC_REQ_ERROR_INVALID_REQUEST;
+	}
 }
 
 typedef struct UvcGadget {
@@ -215,7 +340,7 @@ typedef struct UvcGadget {
 	} state;
 
 	struct {
-		UsbUvcRoute routes;
+		UsbUvcDispatch dispatch;
 
 		// Last request error code as per 4.2.1.2 of UVC 1.5 spec
 		// VC_REQUEST_ERROR_CODE_CONTROL
@@ -226,7 +351,7 @@ typedef struct UvcGadget {
 	} usb;
 } UvcGadget;
 
-static int uvcHandleVcInterfaceErrorCodeControl(UvcGadget *uvc, UsbUvcControlHandleArgs args) {
+static int uvcHandleVcInterfaceErrorCodeControl(UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
 	UNUSED(uvc);
 	if (args.req->bRequest == UVC_GET_CUR) {
 		args.response->length = 1;
@@ -256,7 +381,7 @@ static const UsbUvcEntity uvc_vc_entities[] = {
 	},
 };
 
-static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlHandleArgs args) {
+static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
 	UNUSED(uvc);
 
 	struct uvc_streaming_control *const stream_ctrl = (void*)&args.response->data;
@@ -346,7 +471,7 @@ static const UsbUvcInterface uvc_interfaces[] = {
 	},
 };
 
-static const UsbUvcRoute uvc_routes = {
+static const UsbUvcDispatch uvc_dispatch = {
 	.interfaces = uvc_interfaces,
 	.interfaces_count = COUNTOF(uvc_interfaces),
 };
@@ -412,7 +537,7 @@ struct Node *uvcOpen(const char *dev_name) {
 	gadget->node.input = &dev->output;
 
 	gadget->gadget = dev;
-	gadget->usb.routes = uvc_routes;
+	gadget->usb.dispatch = uvc_dispatch;
 
 	return &gadget->node;
 
@@ -436,27 +561,38 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) 
 		uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
 	}
 
-	const int result = usbUvcRouteRequest(&uvc->usb.routes, uvc, req, &response);
+	const UsbUvcControlDispatchArgs args = usbUvcControlDispatchArgs(req, &response);
+	const int result = usbUvcDispatchRequest(&uvc->usb.dispatch, uvc, args);
 	switch (result) {
-		case USB_UVC_ROUTE_NO_INTERFACE:
-			LOGE("%s: No interface found", __func__);
+		case USB_UVC_DISPATCH_NO_INTERFACE:
+			LOGE("%s: interface=%s(%d) not found", __func__,
+				usbUvcIntefaceName(args.interface), args.interface);
 			uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
 			response.length = -1; // STALL
 			break;
-		case USB_UVC_ROUTE_NO_ENTITY:
-			LOGE("%s: No entity found", __func__);
+		case USB_UVC_DISPATCH_NO_ENTITY:
+			LOGE("%s: interface=%s(%d) entity=%s(%d) not found", __func__,
+				usbUvcIntefaceName(args.interface), args.interface,
+				usbUvcEntityName(args.interface, args.entity_id), args.entity_id);
 			uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
 			response.length = -1; // STALL
 			break;
-		case USB_UVC_ROUTE_NO_CONTROL:
-			LOGE("%s: No control found", __func__);
+		case USB_UVC_DISPATCH_NO_CONTROL:
+			LOGE("%s: interface=%s(%d) entity=%s(%d) control=%s(%d) not found", __func__,
+				usbUvcIntefaceName(args.interface), args.interface,
+				usbUvcEntityName(args.interface, args.entity_id), args.entity_id,
+				usbUvcControlName(args.interface, args.entity_id, args.control_selector), args.control_selector);
 			uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
 			response.length = -1; // STALL
 			break;
 		default:
 			uvc->usb.bRequestErrorCode = result;
 			if (result != UVC_REQ_ERROR_NO_ERROR) {
-				LOGE("%s: processing request error=%d", __func__, result);
+				LOGE("%s: interface=%s(%d) entity=%s(%d) control=%s(%d) processing request error=%02x", __func__,
+					usbUvcIntefaceName(args.interface), args.interface,
+					usbUvcEntityName(args.interface, args.entity_id), args.entity_id,
+					usbUvcControlName(args.interface, args.entity_id, args.control_selector), args.control_selector,
+					result);
 				response.length = -1; // STALL
 			}
 			break;
