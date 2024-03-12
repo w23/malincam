@@ -609,11 +609,12 @@ int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
 			return errno;
 		}
 
-		/* TODO verbose logging
+#define V4L2_DUMP_FORMATS
+#ifdef V4L2_DUMP_FORMATS
 		//v4l2PrintFormatDesc(&fmt);
 		LOGI("  fmt[%d] = {%s, %s}", i, v4l2PixFmtName(fmt.pixelformat), fmt.description);
 		v4l2PrintFormatFlags(fmt.flags);
-		*/
+#endif
 
 		// Enumerate possible sizes
 		for (int i = 0;; ++i) {
@@ -625,9 +626,9 @@ int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
 				}
 			}
 
-			/* TODO verbose logging
+#ifdef V4L2_DUMP_FORMATS
 			v4l2PrintFrmSizeEnum(&fse);
-			*/
+#endif
 
 			// Only discrete supports index > 0
 			if (fse.type != V4L2_FRMSIZE_TYPE_DISCRETE)

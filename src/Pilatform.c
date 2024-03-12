@@ -13,10 +13,12 @@
 #define SENSOR_WIDTH 1332
 #define SENSOR_HEIGHT 990
 #define SENSOR_BUSFMT MEDIA_BUS_FMT_SRGGB10_1X10
+//#define SENSOR_BUSFMT MEDIA_BUS_FMT_SGRBG10_1X10
 
 // TODO detect flipping
 #define CAMERA_PIXFMT V4L2_PIX_FMT_SBGGR10P
 //#define CAMERA_PIXFMT V4L2_PIX_FMT_SRGGB10P
+//#define CAMERA_PIXFMT V4L2_PIX_FMT_SGRBG10P
 
 //#define CROP_TO_720P
 #define CROP_TO_976
@@ -64,6 +66,62 @@ struct Node *piOpenCamera(void) {
 		return NULL;
 	}
 
+	// Flip sensor and bayer format if needed
+	// TODO there should be a better way to handle this, this is too ad-hoc here.
+	// Probably the sensor itself should report its orientation and support flipping if it's capable.
+	// TODO should it expose the layout-flipped bayer MBUS code? Or should it expose capable formats? ...
+	{
+		V4l2Control *const sensor_rotation = v4l2ControlGet(&sensor->controls, V4L2_CID_CAMERA_SENSOR_ROTATION);
+		if (sensor_rotation) {
+			LOGI("Sensor rotation=%d", (int)sensor_rotation->value);
+			switch (sensor_rotation->value) {
+				case 0:
+					// TODO check no flip?
+					break;
+
+				case 180:
+					{
+						v4l2ControlSetById(&sensor->controls, V4L2_CID_HFLIP, 1);
+						v4l2ControlSetById(&sensor->controls, V4L2_CID_VFLIP, 1);
+
+						/* TODO ...
+						V4l2Control *const hflip = v4l2ControlGet(&sensor->controls, V4L2_CID_HFLIP);
+						if (!hflip) {
+							LOGE("Sensor rotation=%d, but HFLIP is not supported", (int)sensor_rotation->value);
+							break;
+						}
+
+						if (hflip->value) {
+							LOGI("Sensor is already HFLIPped");
+							break;
+						}
+
+						const int result = v4l2ControlSet(&sensor->controls, hflip, 1);
+						if (result != 0) {
+							LOGE("Sensor rotation=%d HFLIP=%d failed: %s %d",
+								(int)sensor_rotation->value, 1, strerror(result), result);
+							break;
+						}
+
+						LOGI("Sensor rotation=%d HFLIP=%d modify_layout=%d",
+							(int)sensor_rotation->value, 1, !!(hflip->query.flags & V4L2_CTRL_FLAG_MODIFY_LAYOUT));
+						*/
+
+						break;
+					}
+
+				// TODO case 90: break;
+				// TODO case 270: break;
+				default:
+					LOGE("Unsupported sensor rotation=%d", (int)sensor_rotation->value);
+					break;
+			}
+		}
+	}
+
+	// TODO ...
+	v4l2ControlSetById(&sensor->controls, V4L2_CID_ANALOGUE_GAIN, 896);
+
 	SubdevSet ss = {
 		.pad = 0,
 
@@ -106,54 +164,6 @@ struct Node *piOpenCamera(void) {
 	if (0 != deviceStreamPrepare(&camera->capture, &camera_capture_opts)) {
 		LOGE("Unable to prepare camera:capture stream");
 		goto fail;
-	}
-
-	// Flip sensor and bayer format if needed
-	// TODO there should be a better way to handle this, this is too ad-hoc here.
-	// Probably the sensor itself should report its orientation and support flipping if it's capable.
-	// TODO should it expose the layout-flipped bayer MBUS code? Or should it expose capable formats? ...
-	{
-		V4l2Control *const sensor_rotation = v4l2ControlGet(&sensor->controls, V4L2_CID_CAMERA_SENSOR_ROTATION);
-		if (sensor_rotation) {
-			LOGI("Sensor rotation=%d", (int)sensor_rotation->value);
-			switch (sensor_rotation->value) {
-				case 0:
-					// TODO check no flip?
-					break;
-
-				case 180:
-					{
-						V4l2Control *const hflip = v4l2ControlGet(&sensor->controls, V4L2_CID_HFLIP);
-						if (!hflip) {
-							LOGE("Sensor rotation=%d, but HFLIP is not supported", (int)sensor_rotation->value);
-							break;
-						}
-
-						if (hflip->value) {
-							LOGI("Sensor is already HFLIPped");
-							break;
-						}
-
-						const int result = v4l2ControlSet(&sensor->controls, hflip, 1);
-						if (result != 0) {
-							LOGE("Sensor rotation=%d HFLIP=%d failed: %s %d",
-								(int)sensor_rotation->value, 1, strerror(result), result);
-							break;
-						}
-
-						LOGI("Sensor rotation=%d HFLIP=%d modify_layout=%d",
-							(int)sensor_rotation->value, 1, !!(hflip->query.flags & V4L2_CTRL_FLAG_MODIFY_LAYOUT));
-
-						break;
-					}
-
-				// TODO case 90: break;
-				// TODO case 270: break;
-				default:
-					LOGE("Unsupported sensor rotation=%d", (int)sensor_rotation->value);
-					break;
-			}
-		}
 	}
 
 	PiCamera *node = calloc(sizeof(PiCamera), 1);
@@ -211,6 +221,11 @@ struct Node *piOpenISP(void) {
 		LOGE("Failed to query isp_out:output stream formats");
 		goto fail;
 	}
+
+	// TODO ...
+	v4l2ControlSetById(&isp_out->controls, V4L2_CID_RED_BALANCE, 3285);
+	v4l2ControlSetById(&isp_out->controls, V4L2_CID_BLUE_BALANCE, 1618);
+	v4l2ControlSetById(&isp_out->controls, V4L2_CID_DIGITAL_GAIN, 1000);
 
 	const DeviceStreamPrepareOpts isp_output_opts = {
 		.buffers_count = 3,
