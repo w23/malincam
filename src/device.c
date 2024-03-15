@@ -537,7 +537,7 @@ struct Device* deviceOpen(const char *devname) {
 
 	Device* const ret = (Device*)malloc(sizeof(Device));
 	*ret = dev;
-	ret->controls = v4l2ControlsCreate(ret->fd);
+	ret->controls = v4l2ControlsCreateFromV4l2Fd(ret->fd);
 	return ret;
 
 fail:

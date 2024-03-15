@@ -7,7 +7,7 @@
 #include <string.h> // strerror
 #include <sys/ioctl.h> // ioctl
 
-V4l2Controls v4l2ControlsCreate(int fd) {
+V4l2Controls v4l2ControlsCreateFromV4l2Fd(int fd) {
 	V4l2Controls ctrls = {.fd = fd};
 	arrayInit(&ctrls.controls, V4l2Control);
 
@@ -161,3 +161,6 @@ int v4l2ControlSetById(V4l2Controls *controls, uint32_t ctrl_id, int64_t value) 
 
 	return v4l2ControlSet(controls, ctrl, value);
 }
+
+V4l2Controls v4l2ControlsCreate(void);
+void v4l2ControlsAppend(V4l2Controls *ctrls, const V4l2Controls *appendage);

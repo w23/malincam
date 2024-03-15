@@ -223,7 +223,7 @@ Subdev *subdevOpen(const char *name, int pads_count) {
 
 	Subdev *out = malloc(sizeof(*out));
 	*out = sd;
-	out->controls = v4l2ControlsCreate(out->fd);
+	out->controls = v4l2ControlsCreateFromV4l2Fd(out->fd);
 	return out;
 
 fail:

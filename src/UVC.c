@@ -330,12 +330,123 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 	}
 }
 
+typedef struct {
+	int controls_index, control_index;
+} UvcMappedControl;
+
+/*
+[INF] [fd=3] ctrl_ext[0]: id=(9961473)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='User Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=3] ctrl_ext[1]: id=(9963793)V4L2_CID_EXPOSURE type=V4L2_CTRL_TYPE_INTEGER name='Exposure' range=[4.+1.1028] def=1028 cur=1028 flags=00000000
+[INF] [fd=3] ctrl_ext[2]: id=(9963796)V4L2_CID_HFLIP type=V4L2_CTRL_TYPE_BOOLEAN name='Horizontal Flip' range=[0.+1.1] def=0 cur=1 flags=00000400
+[INF]  V4L2_CTRL_FLAG_MODIFY_LAYOUT
+[INF] [fd=3] ctrl_ext[3]: id=(9963797)V4L2_CID_VFLIP type=V4L2_CTRL_TYPE_BOOLEAN name='Vertical Flip' range=[0.+1.1] def=0 cur=1 flags=00000400
+[INF]  V4L2_CTRL_FLAG_MODIFY_LAYOUT
+[INF] [fd=3] ctrl_ext[4]: id=(10092545)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='Camera Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=3] ctrl_ext[5]: id=(10094882)V4L2_CID_CAMERA_ORIENTATION type=V4L2_CTRL_TYPE_MENU name='Camera Orientation' range=[0.+1.2] def=2 cur=2 flags=00000004
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]   menuitem[0]: name=Front
+[INF]   menuitem[1]: name=Back
+[INF]   menuitem[2]: -> name=External
+[INF] [fd=3] ctrl_ext[6]: id=(10094883)V4L2_CID_CAMERA_SENSOR_ROTATION type=V4L2_CTRL_TYPE_INTEGER name='Camera Sensor Rotation' range=[180.+1.180] def=180 cur=180 flags=
+00000004
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF] [fd=3] ctrl_ext[7]: id=(10354689)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='Image Source Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=3] ctrl_ext[8]: id=(10356993)V4L2_CID_VBLANK type=V4L2_CTRL_TYPE_INTEGER name='Vertical Blanking' range=[60.+1.8383010] def=60 cur=60 flags=00000000
+[INF] [fd=3] ctrl_ext[9]: id=(10356994)V4L2_CID_HBLANK type=V4L2_CTRL_TYPE_INTEGER name='Horizontal Blanking' range=[5332.+1.65520] def=5332 cur=5332 flags=00000000
+[INF] [fd=3] ctrl_ext[10]: id=(10356995)V4L2_CID_ANALOGUE_GAIN type=V4L2_CTRL_TYPE_INTEGER name='Analogue Gain' range=[0.+1.978] def=0 cur=896 flags=00000000
+[INF] [fd=3] ctrl_ext[11]: id=(10356996)V4L2_CID_TEST_PATTERN_RED type=V4L2_CTRL_TYPE_INTEGER name='Red Pixel Value' range=[0.+1.4095] def=4095 cur=4095 flags=00000000
+[INF] [fd=3] ctrl_ext[12]: id=(10356997)V4L2_CID_TEST_PATTERN_GREENR type=V4L2_CTRL_TYPE_INTEGER name='Green (Red) Pixel Value' range=[0.+1.4095] def=4095 cur=4095 flags=
+00000000
+[INF] [fd=3] ctrl_ext[13]: id=(10356998)V4L2_CID_TEST_PATTERN_BLUE type=V4L2_CTRL_TYPE_INTEGER name='Blue Pixel Value' range=[0.+1.4095] def=4095 cur=4095 flags=00000000
+[INF] [fd=3] ctrl_ext[14]: id=(10356999)V4L2_CID_TEST_PATTERN_GREENB type=V4L2_CTRL_TYPE_INTEGER name='Green (Blue) Pixel Value' range=[0.+1.4095] def=4095 cur=4095 flags
+=00000000
+[INF] [fd=3] ctrl_ext[15]: id=(10420225)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='Image Processing Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=3] ctrl_ext[16]: id=(10422530)V4L2_CID_PIXEL_RATE type=V4L2_CTRL_TYPE_INTEGER64 name='Pixel Rate' range=[840000000.+1.840000000] def=840000000 cur=840000000 fla
+gs=00000004
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF] [fd=3] ctrl_ext[17]: id=(10422531)V4L2_CID_TEST_PATTERN type=V4L2_CTRL_TYPE_MENU name='Test Pattern' range=[0.+1.4] def=0 cur=0 flags=00000000
+[INF]   menuitem[0]: -> name=Disabled
+[INF]   menuitem[1]: name=Color Bars
+[INF]   menuitem[2]: name=Solid Color
+[INF]   menuitem[3]: name=Grey Color Bars
+[INF]   menuitem[4]: name=PN9
+[INF] [fd=3] ctrl_ext[18]: id=(10422533)V4L2_CID_DIGITAL_GAIN type=V4L2_CTRL_TYPE_INTEGER name='Digital Gain' range=[256.+1.65535] def=256 cur=256 flags=00000000
+[INF] Total ext controls: 19
+
+
+[INF] [fd=8] ctrl_ext[0]: id=(9961473)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='User Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=8] ctrl_ext[1]: id=(9963790)V4L2_CID_RED_BALANCE type=V4L2_CTRL_TYPE_INTEGER name='Red Balance' range=[1.+1.65535] def=1000 cur=3285 flags=00000020
+[INF]  V4L2_CTRL_FLAG_SLIDER
+[INF] [fd=8] ctrl_ext[2]: id=(9963791)V4L2_CID_BLUE_BALANCE type=V4L2_CTRL_TYPE_INTEGER name='Blue Balance' range=[1.+1.65535] def=1000 cur=1618 flags=00000020
+[INF]  V4L2_CTRL_FLAG_SLIDER
+[INF] [fd=8] ctrl_ext[3]: id=(9968097)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Colour Correction Matrix' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[4]: id=(9968098)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Lens Shading' range=[0.+1.255] def=0 cur=0 flags=00000300
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF]  V4L2_CTRL_FLAG_EXECUTE_ON_WRITE
+[INF] [fd=8] ctrl_ext[5]: id=(9968099)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Black Level' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[6]: id=(9968100)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Green Equalisation' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[7]: id=(9968101)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Gamma' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[8]: id=(9968102)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Denoise' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[9]: id=(9968103)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Sharpen' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[10]: id=(9968104)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Defective Pixel Correction' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[11]: id=(9968105)UNKNOWN type=V4L2_CTRL_TYPE_U8 name='Colour Denoise' range=[0.+1.255] def=0 cur=0 flags=00000100
+[INF]  V4L2_CTRL_FLAG_HAS_PAYLOAD
+[INF] [fd=8] ctrl_ext[12]: id=(10420225)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='Image Processing Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=8] ctrl_ext[13]: id=(10422533)V4L2_CID_DIGITAL_GAIN type=V4L2_CTRL_TYPE_INTEGER name='Digital Gain' range=[1.+1.65535] def=1000 cur=1000 flags=00000000
+[INF] Total ext controls: 14
+
+
+[INF] [fd=13] ctrl_ext[0]: id=(10289153)UNKNOWN type=V4L2_CTRL_TYPE_CTRL_CLASS name='JPEG Compression Controls' range=[0.+0.0] def=0 cur=0 flags=00000044
+[INF]  V4L2_CTRL_FLAG_READ_ONLY
+[INF]  V4L2_CTRL_FLAG_WRITE_ONLY
+[INF] [fd=13] ctrl_ext[1]: id=(10291459)V4L2_CID_JPEG_COMPRESSION_QUALITY type=V4L2_CTRL_TYPE_INTEGER name='Compression Quality' range=[1.+1.100] def=80 cur=80 flags=0000
+0000
+[INF] Total ext controls: 2
+
+
+Filtered controls:
+subdev/sensor:
+[INF] [fd=3] ctrl_ext[1]: id=(9963793)V4L2_CID_EXPOSURE type=V4L2_CTRL_TYPE_INTEGER name='Exposure' range=[4.+1.1028] def=1028 cur=1028 flags=00000000
+[INF] [fd=3] ctrl_ext[10]: id=(10356995)V4L2_CID_ANALOGUE_GAIN type=V4L2_CTRL_TYPE_INTEGER name='Analogue Gain' range=[0.+1.978] def=0 cur=896 flags=00000000
+[INF] [fd=3] ctrl_ext[18]: id=(10422533)V4L2_CID_DIGITAL_GAIN type=V4L2_CTRL_TYPE_INTEGER name='Digital Gain' range=[256.+1.65535] def=256 cur=256 flags=00000000
+
+ISP:
+[INF] [fd=8] ctrl_ext[1]: id=(9963790)V4L2_CID_RED_BALANCE type=V4L2_CTRL_TYPE_INTEGER name='Red Balance' range=[1.+1.65535] def=1000 cur=3285 flags=00000020
+[INF] [fd=8] ctrl_ext[2]: id=(9963791)V4L2_CID_BLUE_BALANCE type=V4L2_CTRL_TYPE_INTEGER name='Blue Balance' range=[1.+1.65535] def=1000 cur=1618 flags=00000020
+[INF] [fd=8] ctrl_ext[13]: id=(10422533)V4L2_CID_DIGITAL_GAIN type=V4L2_CTRL_TYPE_INTEGER name='Digital Gain' range=[1.+1.65535] def=1000 cur=1000 flags=00000000
+[INF] Total ext controls: 14
+
+Encoder:
+[INF] [fd=13] ctrl_ext[1]: id=(10291459)V4L2_CID_JPEG_COMPRESSION_QUALITY type=V4L2_CTRL_TYPE_INTEGER name='Compression Quality' range=[1.+1.100] def=80 cur=80 flags=0000
+ */
+
 typedef struct UvcGadget {
 	Node node;
 
 	uvc_event_streamon_f *event_streamon;
 
 	Device *gadget;
+
+	Array controls;
 
 	struct {
 		UsbUvcDispatch dispatch;
@@ -506,6 +617,12 @@ static int subscribe(Device *dev) {
 
 	return 0;
 }
+
+/* TODO
+static void mapControls(UvcGadget *gadget, const Array *controls) {
+#error impl
+}
+*/
 
 struct Node *uvcOpen(UvcOpenArgs args) {
 	Device *dev = deviceOpen(args.dev_name);

@@ -18,7 +18,7 @@ typedef struct {
 
 // Enumerates controls (ext) for a given fd, device or subdevice
 // Returns Array<V4l2Control>
-V4l2Controls v4l2ControlsCreate(int fd);
+V4l2Controls v4l2ControlsCreateFromV4l2Fd(int fd);
 void v4l2ControlsDestroy(V4l2Controls *controls);
 
 // Returns:
