@@ -197,7 +197,7 @@ static int pipelineCreate(void) {
 		.event_bits = POLLIN_FD_EXCEPT,
 		.func = bitSetFunc,
 		.arg1 = (uintptr_t)&p->fd_bits,
-		.arg2 = ENC_TO_UVC_BIT | UVC_EVENTS_BIT});
+		.arg2 = UVC_EVENTS_BIT});
 
 	return 0;
 }
@@ -289,9 +289,9 @@ int pipelineStop(void) {
 	nodeStop(g_pipeline.isp);
 	nodeStop(g_pipeline.cam);
 
-	pumpDestroy(p->enc_to_uvc);
-	pumpDestroy(p->isp_to_enc);
-	pumpDestroy(p->cam_to_isp);
+	pumpDestroy(p->enc_to_uvc); p->enc_to_uvc = NULL;
+	pumpDestroy(p->isp_to_enc); p->isp_to_enc = NULL;
+	pumpDestroy(p->cam_to_isp); p->cam_to_isp = NULL;
 
 	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
 		.fd = p->cam->output->dev_fd,
@@ -343,27 +343,29 @@ static int pipelineProcess(void) {
 		uvcProcessEvents(g_pipeline.uvc);
 	}
 
-	if (g_pipeline.fd_bits & CAM_TO_ISP_BIT) {
+	// After this point stream might have stopped already, but we'd still have lingering bits singaling transfer...
+
+	if (g_pipeline.cam_to_isp && g_pipeline.fd_bits & CAM_TO_ISP_BIT) {
 		const int result = pumpPump(g_pipeline.cam_to_isp);
 		if (0 != result) {
 			LOGE("cam-to-isp pump error: %d", result);
-			return 1;
+			//return 1;
 		}
 	}
 
-	if (g_pipeline.fd_bits & ISP_TO_ENC_BIT) {
+	if (g_pipeline.isp_to_enc && g_pipeline.fd_bits & ISP_TO_ENC_BIT) {
 		const int result = pumpPump(g_pipeline.isp_to_enc);
 		if (0 != result) {
 			LOGE("isp-to-enc pump error: %d", result);
-			return 1;
+			//return 1;
 		}
 	}
 
-	if (p->enc_to_uvc && g_pipeline.fd_bits & ENC_TO_UVC_BIT) {
+	if (g_pipeline.enc_to_uvc && g_pipeline.fd_bits & ENC_TO_UVC_BIT) {
 		const int result = pumpPump(p->enc_to_uvc);
 		if (0 != result) {
 			LOGE("enc-to-uvc pump error: %d", result);
-			return 1;
+			//return 1;
 		}
 	}
 

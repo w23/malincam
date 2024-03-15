@@ -103,10 +103,18 @@ int pollinatorMonitorFd(Pollinator *p, const PollinatorMonitorFd *reg) {
 int pollinatorPoll(Pollinator *p, int timeout_ms) {
 #define MAX_EVENTS 16
 	struct epoll_event events[MAX_EVENTS];
-	const int count = epoll_wait(p->epoll_fd, events, MAX_EVENTS, timeout_ms);
-	if (count < 0) {
-		LOGE("epoll_wait returned %d: %s", errno, strerror(errno));
-		return count;
+	int count;
+
+	for (;;) {
+		count = epoll_wait(p->epoll_fd, events, MAX_EVENTS, timeout_ms);
+		if (count < 0) {
+			LOGE("epoll_wait returned %d: %s", errno, strerror(errno));
+			if (errno == EINTR)
+				continue;
+			return count;
+		}
+
+		break;
 	}
 
 	int result = POLLINATOR_CONTINUE;

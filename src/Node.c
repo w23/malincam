@@ -6,6 +6,7 @@
 #include <string.h>
 
 int nodeStart(Node *node) {
+	LOGI("%s: node=%s", __func__, node->name);
 	if (node->output) {
 		const int status = deviceStreamStart(node->output);
 		if (0 != status) {
@@ -29,6 +30,7 @@ int nodeStart(Node *node) {
 }
 
 int nodeStop(Node *node) {
+	LOGI("%s: node=%s", __func__, node->name);
 	int status = 0;
 	if (node->output) {
 		status = deviceStreamStop(node->output);
@@ -39,7 +41,7 @@ int nodeStop(Node *node) {
 
 	const int output_status = status;
 	if (node->input) {
-		status = deviceStreamStart(node->input);
+		status = deviceStreamStop(node->input);
 		if (0 != status) {
 			LOGE("Unable to stop %s:input: %s(%d)", node->name, strerror(status), status);
 		}

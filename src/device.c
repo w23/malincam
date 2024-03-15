@@ -379,7 +379,7 @@ static int streamRequestBuffers(DeviceStream *st) {
 	// - frame size, pixelformat, etc
 
 	if (st->buffers) {
-		LOGE("%s: stream=%p already has buffers (active?) FIXME free them", __func__, (void*)st);
+		LOGE("%s: stream=%p(fd=%d) already has buffers (active?) FIXME free them?", __func__, (void*)st, st->dev_fd);
 		return -EBUSY;
 	}
 
@@ -680,6 +680,7 @@ int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
 }
 
 int deviceStreamStart(DeviceStream *st) {
+	LOGI("%s: stream=%p(fd=%d)", __func__, (void*)st, st->dev_fd);
 	switch (st->state) {
 		case STREAM_STATE_IDLE:
 			LOGE("%s: stream=%p(fd=%d) is not prepared", __func__, (void*)st, st->dev_fd);
@@ -710,6 +711,7 @@ int deviceStreamStart(DeviceStream *st) {
 }
 
 int deviceStreamStop(DeviceStream *st) {
+	LOGI("%s: stream=%p(fd=%d)", __func__, (void*)st, st->dev_fd);
 	if (st->state != STREAM_STATE_STREAMING) {
 			LOGE("%s: stream=%p(fd=%d) is not streaming", __func__, (void*)st, st->dev_fd);
 			return 0;
