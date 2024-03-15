@@ -27,7 +27,7 @@ struct Pollinator *pollinatorCreate(void) {
 	return p;
 }
 
-void pollinatorFinalize(Pollinator *p) {
+void pollinatorDestroy(Pollinator *p) {
 	if (!p)
 		return;
 
@@ -36,16 +36,55 @@ void pollinatorFinalize(Pollinator *p) {
 	free(p);
 }
 
-//int pollinatorRegisterFd(Pollinator *p, int fd, void *userptr, pollin_fd_f *func) {
-int pollinatorRegisterFd(Pollinator *p, const PollinatorRegisterFd *reg) {
-	const int index = arraySize(&p->fds);
-	PollinatorFd new_pfd = {
+static int findPfd(Pollinator *const p, int fd) {
+	const int n = arraySize(&p->fds);
+	for (int i = 0; i < n; ++i) {
+		const PollinatorFd *const pfd = arrayAtConst(&p->fds, PollinatorFd, i);
+		if (pfd->fd == fd)
+			return i;
+	}
+
+	return -1;
+}
+
+static int allocPfd(Pollinator *const p) {
+	const int n = arraySize(&p->fds);
+	for (int i = 0; i < n; ++i) {
+		const PollinatorFd *const pfd = arrayAtConst(&p->fds, PollinatorFd, i);
+		if (pfd->fd < 0)
+			return i;
+	}
+
+	return arrayAppend(&p->fds, NULL);
+}
+
+int pollinatorMonitorFd(Pollinator *p, const PollinatorMonitorFd *reg) {
+	int index = findPfd(p, reg->fd);
+	int epoll_op = reg->event_bits == 0 ? EPOLL_CTL_DEL : EPOLL_CTL_MOD;
+
+	if (epoll_op == EPOLL_CTL_DEL) {
+		if (index < 0)
+			return 0;
+
+		PollinatorFd *const pfd = arrayAt(&p->fds, PollinatorFd, index);
+		pfd->fd = -1;
+
+		const int result = epoll_ctl(p->epoll_fd, EPOLL_CTL_DEL, reg->fd, NULL);
+		ASSERT(result == 0);
+		return 0;
+	}
+
+	if (index < 0) {
+		index = allocPfd(p);
+		epoll_op = EPOLL_CTL_ADD;
+	}
+
+	*arrayAt(&p->fds, PollinatorFd, index) = (PollinatorFd){
 		.fd = reg->fd,
 		.func = reg->func,
 		.arg1 = reg->arg1,
 		.arg2 = reg->arg2,
 	};
-	arrayAppend(&p->fds, &new_pfd);
 
 	struct epoll_event event = {
 		.data.u32 = index,
@@ -55,7 +94,8 @@ int pollinatorRegisterFd(Pollinator *p, const PollinatorRegisterFd *reg) {
 			| ((reg->event_bits & POLLIN_FD_EXCEPT) ? EPOLLPRI : 0)
 			| ((reg->event_bits & POLLIN_FD_ERR) ? EPOLLERR : 0),
 	};
-	const int result = epoll_ctl(p->epoll_fd, EPOLL_CTL_ADD, reg->fd, &event);
+
+	const int result = epoll_ctl(p->epoll_fd, epoll_op, reg->fd, &event);
 	ASSERT(result == 0);
 	return 0;
 }

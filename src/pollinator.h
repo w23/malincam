@@ -22,22 +22,14 @@ struct Pollinator;
 struct Pollinator *pollinatorCreate(void);
 void pollinatorDestroy(struct Pollinator *p);
 
-/*
-typedef struct {
-	int index_;
-} PollinatorHandle;
-
-#define POLLINATOR_IS_INVALID_HANDLE(handle) ((handle).index_ < 0)
-*/
-
 typedef struct {
 	int fd;
-	uint32_t event_bits; // POLLIN_FD_
+	uint32_t event_bits; // POLLIN_FD_*, zero means unregister
 	pollin_fd_f *func;
 	uintptr_t arg1, arg2;
-} PollinatorRegisterFd;
+} PollinatorMonitorFd;
 
-int pollinatorRegisterFd(struct Pollinator *p, const PollinatorRegisterFd *reg);
-// TODO pollinatorUnregister(Pollinator *p, PollinatorHandle handle);
+// Returns < 0 on failure
+int pollinatorMonitorFd(struct Pollinator *p, const PollinatorMonitorFd *reg);
 
 int pollinatorPoll(struct Pollinator *p, int timeout_ms);

@@ -21,7 +21,7 @@ typedef struct Array {
 
 static inline void arrayResize(Array *array) { array->size = 0; }
 void arrayReserve(Array *array, int capacity);
-void arrayAppend(Array *array, const void *item);
+int arrayAppend(Array *array, const void *item);
 void arrayDestroy(Array *array);
 
 // TODO void arrayFreeDtor(Array *array, dtor_f, void *user);
@@ -49,15 +49,18 @@ void arrayReserve(Array *array, int capacity) {
 	array->capacity = capacity;
 }
 
-void arrayAppend(Array *array, const void *item) {
+int arrayAppend(Array *array, const void *item) {
 	if (array->size == array->capacity) {
 		int new_capacity = array->capacity ? array->capacity * 3 / 2 : (16 + array->item_size- 1) / array->item_size;
 		arrayReserve(array, new_capacity > array->capacity ? new_capacity : array->capacity + 1);
 	}
 
-	void *dst = (char*)array->data + array->item_size * array->size;
-	memcpy(dst, item, array->item_size);
-	array->size++;
+	if (item) {
+		void *dst = (char*)array->data + array->item_size * array->size;
+		memcpy(dst, item, array->item_size);
+	}
+
+	return array->size++;
 }
 
 void arrayDestroy(Array *array) {

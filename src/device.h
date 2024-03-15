@@ -22,6 +22,7 @@ typedef enum {
 
 typedef enum {
 	STREAM_STATE_IDLE = 0,
+	STREAM_STATE_PREPARED,
 	STREAM_STATE_STREAMING,
 } StreamState;
 
@@ -39,8 +40,9 @@ typedef struct DeviceStream {
 	Array /*T(struct v4l2_fmtdesc)*/ formats;
 
 	buffer_memory_e buffer_memory;
-	struct Buffer *buffers;
 	int buffers_count;
+
+	struct Buffer *buffers;
 } DeviceStream;
 
 #define IS_TYPE_MPLANE(type) \
@@ -66,6 +68,24 @@ typedef struct {
 	Array controls;
 } V4l2Controls;
 
+// Enumerates controls (ext) for a given fd, device or subdevice
+// Returns Array<V4l2Control>
+V4l2Controls v4l2ControlsCreate(int fd);
+void v4l2ControlsDestroy(V4l2Controls *controls);
+
+// Returns:
+// - -ENOENT on no such control
+// - -ERANGE on value outside of range
+// - -EPERM on unsupported ctrl type
+// - other values on ioctl() errors
+// - 0 on success
+int v4l2ControlSetById(V4l2Controls *ctrls, uint32_t ctrl_id, int64_t value);
+int v4l2ControlSet(V4l2Controls *ctrls, V4l2Control *ctrl, int64_t value);
+
+// NULL if not found
+V4l2Control *v4l2ControlGet(V4l2Controls *ctrls, uint32_t ctrl);
+
+
 typedef struct Device {
 	int fd;
 	char *name;
@@ -89,7 +109,7 @@ int deviceEventGet(Device *dev, struct v4l2_event *out);
 // TODO split into:
 // - set format
 // - streamon (buffers); streamoff should destroy buffers
-typedef struct DeviceStreamPrepareOpts {
+typedef struct {
 	buffer_memory_e buffer_memory;
 	uint32_t buffers_count;
 
@@ -98,23 +118,6 @@ typedef struct DeviceStreamPrepareOpts {
 
 	uint32_t crop_width, crop_height;
 } DeviceStreamPrepareOpts;
-
-// Enumerates controls (ext) for a given fd, device or subdevice
-// Returns Array<V4l2Control>
-V4l2Controls v4l2ControlsCreate(int fd);
-void v4l2ControlsDestroy(V4l2Controls *controls);
-
-// Returns:
-// - -ENOENT on no such control
-// - -ERANGE on value outside of range
-// - -EPERM on unsupported ctrl type
-// - other values on ioctl() errors
-// - 0 on success
-int v4l2ControlSetById(V4l2Controls *ctrls, uint32_t ctrl_id, int64_t value);
-int v4l2ControlSet(V4l2Controls *ctrls, V4l2Control *ctrl, int64_t value);
-
-// NULL if not found
-V4l2Control *v4l2ControlGet(V4l2Controls *ctrls, uint32_t ctrl);
 
 // @mbus_code is optional, set to 0 if not known
 int deviceStreamQueryFormats(DeviceStream *st, int mbus_code);

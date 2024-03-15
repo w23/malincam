@@ -333,11 +333,9 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 typedef struct UvcGadget {
 	Node node;
 
-	Device *gadget;
+	uvc_event_streamon_f *event_streamon;
 
-	struct {
-		int is_streaming;
-	} state;
+	Device *gadget;
 
 	struct {
 		UsbUvcDispatch dispatch;
@@ -509,25 +507,25 @@ static int subscribe(Device *dev) {
 	return 0;
 }
 
-struct Node *uvcOpen(const char *dev_name) {
-	Device *dev = deviceOpen(dev_name);
+struct Node *uvcOpen(UvcOpenArgs args) {
+	Device *dev = deviceOpen(args.dev_name);
 	if (!dev) {
-		LOGE("%s: Failed to open device %s", __func__, dev_name);
+		LOGE("%s: Failed to open device %s", __func__, args.dev_name);
 		return NULL;
 	}
 
 	if (!(dev->this_device_caps & V4L2_CAP_STREAMING)) {
-		LOGE("%s: device %s doesn't support streaming", __func__, dev_name);
+		LOGE("%s: device %s doesn't support streaming", __func__, args.dev_name);
 		goto fail;
 	}
 
 	if (!(dev->this_device_caps & V4L2_CAP_VIDEO_OUTPUT)) {
-		LOGE("%s: device %s doesn't support output", __func__, dev_name);
+		LOGE("%s: device %s doesn't support output", __func__, args.dev_name);
 		goto fail;
 	}
 
 	if (0 != subscribe(dev)) {
-		LOGE("%s: cannot subscribing device %s to UVC gadget events", __func__, dev_name);
+		LOGE("%s: cannot subscribing device %s to UVC gadget events", __func__, args.dev_name);
 		goto fail;
 	}
 
@@ -535,6 +533,8 @@ struct Node *uvcOpen(const char *dev_name) {
 	gadget->node.name = "uvc_gadget";
 	gadget->node.dtorFunc = uvcDtor;
 	gadget->node.input = &dev->output;
+
+	gadget->event_streamon = args.event_streamon;
 
 	gadget->gadget = dev;
 	gadget->usb.dispatch = uvc_dispatch;
@@ -692,14 +692,12 @@ static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
 	case UVC_EVENT_STREAMON:
 		LOGI("%s: UVC_EVENT_STREAMON", uvc->node.name);
 		uvcPrepare(uvc);
-		uvc->state.is_streaming = 1;
-		// TODO start streaming
+		uvc->event_streamon(1);
 		break;
 
 	case UVC_EVENT_STREAMOFF:
 		LOGI("%s: UVC_EVENT_STREAMOFF", uvc->node.name);
-		// TODO stop streaming
-		uvc->state.is_streaming = 0;
+		uvc->event_streamon(0);
 		break;
 
 	case UVC_EVENT_SETUP:
@@ -740,9 +738,4 @@ int uvcProcessEvents(struct Node *uvc_node) {
 	}
 
 	return events;
-}
-
-int uvcIsStreaming(struct Node *uvc_node) {
-	UvcGadget *uvc = (UvcGadget*)uvc_node;
-	return uvc->state.is_streaming;
 }

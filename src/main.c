@@ -96,8 +96,8 @@ static int testUvc(void) {
 	struct Pollinator *const pol = pollinatorCreate();
 
 	uint32_t bits = 0;
-	//pollinatorRegisterFd(&pol, uvc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, 1);
-	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
+	//pollinatorMonitorFd(&pol, uvc->input->dev_fd, bitSetFunc, (uintptr_t)&bits, 1);
+	pollinatorMonitorFd(pol, &(PollinatorMonitorFd){
 		//.fd = fd2,
 		.fd = uvc->input->dev_fd,
 		.event_bits = POLLIN_FD_EXCEPT,
@@ -131,14 +131,33 @@ static int testUvc(void) {
 }
 #endif // ifdef TEST_UVC_ONLY
 
-int main(int argc, const char *argv[]) {
-	UNUSED(argc);
-	UNUSED(argv);
-	g_begin_us = nowUs();
+#define CAM_TO_ISP_BIT (1<<0)
+#define ISP_TO_ENC_BIT (1<<1)
+#define ENC_TO_UVC_BIT (1<<2)
+#define UVC_EVENTS_BIT (1<<3)
 
-#ifdef TEST_UVC_ONLY
-	return testUvc();
-#else
+typedef struct {
+	Node *cam;
+	Node *isp;
+	Node *enc;
+	Node *uvc;
+
+	struct Pollinator *pol;
+
+	Pump *cam_to_isp;
+	Pump *isp_to_enc;
+	Pump *enc_to_uvc;
+
+	uint32_t fd_bits;
+} Pipeline;
+
+static Pipeline g_pipeline = {0};
+
+static int uvcEventStreamon(int streamon);
+
+static int pipelineCreate(void) {
+	Pipeline *const p = &g_pipeline;
+
 	Node *const cam = piOpenCamera();
 	if (!cam) {
 		LOGE("Unable to open Rpi camera");
@@ -157,147 +176,227 @@ int main(int argc, const char *argv[]) {
 		return 1;
 	}
 
-	Node *const uvc = uvcOpen("/dev/video2");
+	Node *const uvc = uvcOpen((UvcOpenArgs){
+		.dev_name = "/dev/video2",
+		.event_streamon = uvcEventStreamon,
+	});
 	if (!uvc) {
 		LOGE("Unable to open uvc-gadget device");
 		return 1;
 	}
 
-	// FIXME only start streaming when uvc-gadget says so
+	p->cam = cam;
+	p->isp = isp;
+	p->enc = enc;
+	p->uvc = uvc;
 
-	// Start streaming
-	if (0 != nodeStart(enc)) {
+	p->pol = pollinatorCreate();
+
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = uvc->input->dev_fd,
+		.event_bits = POLLIN_FD_EXCEPT,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&p->fd_bits,
+		.arg2 = ENC_TO_UVC_BIT | UVC_EVENTS_BIT});
+
+	return 0;
+}
+
+static void pipelineDestroy(void) {
+	Pipeline *const p = &g_pipeline;
+
+	pumpDestroy(p->isp_to_enc);
+	pumpDestroy(p->cam_to_isp);
+
+	nodeDestroy(p->enc);
+	nodeDestroy(p->isp);
+	nodeDestroy(p->cam);
+
+	pollinatorDestroy(p->pol);
+}
+
+int pipelineStart(void) {
+	Pipeline *const p = &g_pipeline;
+
+	if (0 != nodeStart(p->uvc)) {
+		LOGE("Unable to start uvc-gadget");
+		return 1;
+	}
+
+	if (0 != nodeStart(p->enc)) {
 		LOGE("Unable to start encoder");
 		return 1;
 	}
 
-	if (0 != nodeStart(isp)) {
+	if (0 != nodeStart(p->isp)) {
 		LOGE("Unable to start ISP");
 		return 1;
 	}
 
-	if (0 != nodeStart(cam)) {
+	if (0 != nodeStart(p->cam)) {
 		LOGE("Unable to start camera");
 		return 1;
 	}
 
-	struct Pollinator *const pol = pollinatorCreate();
+	p->cam_to_isp = pumpCreate(p->cam->output, p->isp->input);
+	p->isp_to_enc = pumpCreate(p->isp->output, p->enc->input);
+	p->enc_to_uvc = pumpCreate(p->enc->output, p->uvc->input);
 
-	Pump *const cam_to_isp = pumpCreate(cam->output, isp->input);
-	Pump *const isp_to_enc = pumpCreate(isp->output, enc->input);
-	Pump *enc_to_uvc = NULL;
-
-#define CAM_TO_ISP_BIT (1<<0)
-#define ISP_TO_ENC_BIT (1<<1)
-#define ENC_TO_UVC_BIT (1<<2)
-#define UVC_EVENTS_BIT (1<<3)
-	uint32_t bits = 0;
-
-	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
-		.fd = cam->output->dev_fd,
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->cam->output->dev_fd,
 		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
 		.func = bitSetFunc,
-		.arg1 = (uintptr_t)&bits,
+		.arg1 = (uintptr_t)&p->fd_bits,
 		.arg2 = CAM_TO_ISP_BIT});
 
-	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
-		.fd = isp->input->dev_fd,
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->isp->input->dev_fd,
 		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
 		.func = bitSetFunc,
-		.arg1 = (uintptr_t)&bits,
+		.arg1 = (uintptr_t)&p->fd_bits,
 		.arg2 = CAM_TO_ISP_BIT});
 
 	// FIXME if using single-device isp /dev/video12, then this fd will be the same as input
-	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
-		.fd = isp->output->dev_fd,
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->isp->output->dev_fd,
 		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
 		.func = bitSetFunc,
-		.arg1 = (uintptr_t)&bits,
+		.arg1 = (uintptr_t)&p->fd_bits,
 		.arg2 = ISP_TO_ENC_BIT});
 
-	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
-		.fd = enc->input->dev_fd,
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->enc->input->dev_fd,
 		.event_bits = POLLIN_FD_READ | POLLIN_FD_WRITE,
 		.func = bitSetFunc,
-		.arg1 = (uintptr_t)&bits,
+		.arg1 = (uintptr_t)&p->fd_bits,
 		.arg2 = ISP_TO_ENC_BIT | ENC_TO_UVC_BIT});
 
-	pollinatorRegisterFd(pol, &(PollinatorRegisterFd){
-		.fd = uvc->input->dev_fd,
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->uvc->input->dev_fd,
 		.event_bits = POLLIN_FD_EXCEPT | POLLIN_FD_WRITE | POLLIN_FD_READ,
 		.func = bitSetFunc,
-		.arg1 = (uintptr_t)&bits,
+		.arg1 = (uintptr_t)&p->fd_bits,
 		.arg2 = ENC_TO_UVC_BIT | UVC_EVENTS_BIT});
 
-	prev_frame_us = nowUs();
-	for (;;) {
-		bits = 0;
+	return 0;
+}
 
-		const uint64_t poll_pre = nowUs();
-		const int result = pollinatorPoll(pol, 5000);
-		const uint64_t poll_after = nowUs();
-		if (!bits) {
-			LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
-			//bits = 0xff;
-		}
+int pipelineStop(void) {
+	Pipeline *const p = &g_pipeline;
 
-		if (result < 0) {
-			LOGE("Pollinator returned %d", result);
-			exit(1);
-		}
+	nodeStop(g_pipeline.uvc);
+	nodeStop(g_pipeline.enc);
+	nodeStop(g_pipeline.isp);
+	nodeStop(g_pipeline.cam);
 
-		if (bits & UVC_EVENTS_BIT) {
-			uvcProcessEvents(uvc);
-		}
+	pumpDestroy(p->enc_to_uvc);
+	pumpDestroy(p->isp_to_enc);
+	pumpDestroy(p->cam_to_isp);
 
-		if (bits & CAM_TO_ISP_BIT) {
-			const int result = pumpPump(cam_to_isp);
-			if (0 != result) {
-				LOGE("cam-to-isp pump error: %d", result);
-				return 1;
-			}
-		}
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->cam->output->dev_fd,
+		.event_bits = 0,
+	});
 
-		if (bits & ISP_TO_ENC_BIT) {
-			const int result = pumpPump(isp_to_enc);
-			if (0 != result) {
-				LOGE("isp-to-enc pump error: %d", result);
-				return 1;
-			}
-		}
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->isp->input->dev_fd,
+		.event_bits = 0});
 
-		if (uvcIsStreaming(uvc)) {
-			if (!enc_to_uvc) {
-				if (0 != nodeStart(uvc)) {
-					LOGE("Unable to start uvc-gadget");
-					return 1;
-				}
-				enc_to_uvc = pumpCreate(enc->output, uvc->input);
-			}
-		}
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->isp->output->dev_fd,
+		.event_bits = 0});
 
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->enc->input->dev_fd,
+		.event_bits = 0});
 
-		if (enc_to_uvc && bits & ENC_TO_UVC_BIT) {
-			const int result = pumpPump(enc_to_uvc);
-			if (0 != result) {
-				LOGE("enc-to-uvc pump error: %d", result);
-				return 1;
-			}
+	// Continue monitoring uvc events
+	pollinatorMonitorFd(p->pol, &(PollinatorMonitorFd){
+		.fd = p->uvc->input->dev_fd,
+		.event_bits = POLLIN_FD_EXCEPT,
+		.func = bitSetFunc,
+		.arg1 = (uintptr_t)&p->fd_bits,
+		.arg2 = UVC_EVENTS_BIT});
+
+	return 0;
+}
+
+static int pipelineProcess(void) {
+	Pipeline *const p = &g_pipeline;
+
+	g_pipeline.fd_bits = 0;
+
+	const uint64_t poll_pre = nowUs();
+	const int result = pollinatorPoll(g_pipeline.pol, 5000);
+	const uint64_t poll_after = nowUs();
+	if (!g_pipeline.fd_bits) {
+		LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+		//g_pipeline.fd_bits = 0xff;
+	}
+
+	if (result < 0) {
+		LOGE("Pollinator returned %d", result);
+		exit(1);
+	}
+
+	if (g_pipeline.fd_bits & UVC_EVENTS_BIT) {
+		uvcProcessEvents(g_pipeline.uvc);
+	}
+
+	if (g_pipeline.fd_bits & CAM_TO_ISP_BIT) {
+		const int result = pumpPump(g_pipeline.cam_to_isp);
+		if (0 != result) {
+			LOGE("cam-to-isp pump error: %d", result);
+			return 1;
 		}
 	}
 
-	pumpDestroy(isp_to_enc);
-	pumpDestroy(cam_to_isp);
+	if (g_pipeline.fd_bits & ISP_TO_ENC_BIT) {
+		const int result = pumpPump(g_pipeline.isp_to_enc);
+		if (0 != result) {
+			LOGE("isp-to-enc pump error: %d", result);
+			return 1;
+		}
+	}
 
-	pollinatorDestroy(pol);
+	if (p->enc_to_uvc && g_pipeline.fd_bits & ENC_TO_UVC_BIT) {
+		const int result = pumpPump(p->enc_to_uvc);
+		if (0 != result) {
+			LOGE("enc-to-uvc pump error: %d", result);
+			return 1;
+		}
+	}
 
-	nodeStop(cam);
-	nodeStop(isp);
-	nodeStop(enc);
+	return 0;
+}
 
-	nodeDestroy(enc);
-	nodeDestroy(isp);
-	nodeDestroy(cam);
+static int uvcEventStreamon(int streamon) {
+	switch (streamon) {
+		case 1: return pipelineStart();
+		case 0: return pipelineStop();
+	}
+	return -EINVAL;
+}
+
+int main(int argc, const char *argv[]) {
+	UNUSED(argc);
+	UNUSED(argv);
+	g_begin_us = nowUs();
+
+#ifdef TEST_UVC_ONLY
+	return testUvc();
+#else
+
+	prev_frame_us = nowUs();
+
+	if (pipelineCreate() != 0) {
+		LOGE("Failed to create pipeline");
+		return 1;
+	}
+
+	while (pipelineProcess() == 0);
+
+	pipelineDestroy();
 
 	return 0;
 #endif // else ifdef TEST_UVC_ONLY

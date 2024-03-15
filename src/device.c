@@ -374,14 +374,19 @@ static int bufferPrepare(DeviceStream *st, Buffer *const buf, buffer_memory_e bu
 	return EINVAL;
 }
 
-static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_e buffer_memory) {
+static int streamRequestBuffers(DeviceStream *st) {
 	// TODO check if anything changed that require buffer request?
 	// - frame size, pixelformat, etc
 
+	if (st->buffers) {
+		LOGE("%s: stream=%p already has buffers (active?) FIXME free them", __func__, (void*)st);
+		return -EBUSY;
+	}
+
 	struct v4l2_requestbuffers req = {0};
 	req.type = st->type;
-	req.count = count;
-	switch (buffer_memory) {
+	req.count = st->buffers_count;
+	switch (st->buffer_memory) {
 		case BUFFER_MEMORY_MMAP:
 		case BUFFER_MEMORY_DMABUF_EXPORT:
 			req.memory = V4L2_MEMORY_MMAP;
@@ -393,7 +398,7 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 			req.memory = V4L2_MEMORY_DMABUF;
 			break;
 		default:
-			LOGE("Invalid buffer memory type %08x", buffer_memory);
+			LOGE("Invalid buffer memory type %08x", st->buffer_memory);
 			return EINVAL;
 	}
 
@@ -412,8 +417,13 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 	v4l2PrintRequestBuffers(&req);
 	*/
 
+	if ((int)req.count != st->buffers_count) {
+		LOGE("%s: stream=%p(fd=%d) requested %d buffers, but returned %d",
+			__func__, (void*)st, st->dev_fd, st->buffers_count, req.count);
+		st->buffers_count = req.count;
+	}
+
 	st->buffers = calloc(req.count, sizeof(*st->buffers));
-	st->buffers_count = req.count;
 
 	struct v4l2_plane bmplanes[VIDEO_MAX_PLANES];
 	for (int i = 0; i < st->buffers_count; ++i) {
@@ -439,20 +449,18 @@ static int streamRequestBuffers(DeviceStream *st, uint32_t count, buffer_memory_
 		v4l2PrintBuffer(&buf->buffer);
 		*/
 
-		if (0 != bufferPrepare(st, buf, buffer_memory)) {
+		if (0 != bufferPrepare(st, buf, st->buffer_memory)) {
 			LOGE("Error preparing buffer %d", i);
 			goto fail;
 		}
 	} // for st->buffers_count
 
-	st->buffer_memory = buffer_memory;
 	return 0;
 
 fail:
 	// FIXME remove ones we've already queried?
 	free(st->buffers);
 	st->buffers = NULL;
-	st->buffers_count = 0;
 	return 1;
 }
 
@@ -640,6 +648,11 @@ int deviceStreamQueryFormats(DeviceStream *st, int mbus_code) {
 }
 
 int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
+	if (st->state == STREAM_STATE_STREAMING) {
+		LOGE("%s: stream=%p is streaming", __func__, (void*)st);
+		return -EBUSY;
+	}
+
 	if (0 != streamSetFormat(st, opts->pixelformat, opts->width, opts->height)) {
 		return -1;
 	}
@@ -655,16 +668,28 @@ int deviceStreamPrepare(DeviceStream *st, const DeviceStreamPrepareOpts *opts) {
 	st->compose = st->crop;
 	setCompose(st, opts->crop_width, opts->crop_height);
 
-	if (0 != streamRequestBuffers(st, opts->buffers_count, opts->buffer_memory)) {
+	st->buffer_memory = opts->buffer_memory;
+	st->buffers_count = opts->buffers_count;
+
+	if (0 != streamRequestBuffers(st)) {
 		return -2;
 	}
 
+	st->state = STREAM_STATE_PREPARED;
 	return 0;
 }
 
 int deviceStreamStart(DeviceStream *st) {
-	if (st->state != STREAM_STATE_IDLE)
-		return -EINPROGRESS;
+	switch (st->state) {
+		case STREAM_STATE_IDLE:
+			LOGE("%s: stream=%p(fd=%d) is not prepared", __func__, (void*)st, st->dev_fd);
+			return -ENOENT;
+		case STREAM_STATE_STREAMING:
+			LOGE("%s: stream=%p(fd=%d) is already streaming", __func__, (void*)st, st->dev_fd);
+			return -EBUSY;
+		case STREAM_STATE_PREPARED:
+			break;
+	}
 
 	// Capture stream should have all of its buffers ready for writing
 	// TODO what should be done about starting-stopping stream?
@@ -685,20 +710,27 @@ int deviceStreamStart(DeviceStream *st) {
 }
 
 int deviceStreamStop(DeviceStream *st) {
-	// TODO check whether all buffers are done?
+	if (st->state != STREAM_STATE_STREAMING) {
+			LOGE("%s: stream=%p(fd=%d) is not streaming", __func__, (void*)st, st->dev_fd);
+			return 0;
+	}
 
+	// VIDIOC_STREAMOFF will immediately stop streaming, cancel DMA, and dequeue all the buffers
 	if (0 != ioctl(st->dev_fd, VIDIOC_STREAMOFF, &st->type)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_STREAMOFF, %s): %d, %s",
 			st->dev_fd, v4l2BufTypeName(st->type), errno, strerror(errno));
 		return 1;
 	}
 
+	st->state = STREAM_STATE_PREPARED;
 	return 0;
 }
 
 const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
-	if (st->state != STREAM_STATE_STREAMING)
+	if (!st->buffers) {
+		LOGE("%s: stream=%p(fd=%d) is not active", __func__, (void*)st, st->dev_fd);
 		return NULL;
+	}
 
 	struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
 
@@ -741,6 +773,11 @@ const Buffer *deviceStreamPullBuffer(DeviceStream *st) {
 }
 
 int deviceStreamPushBuffer(DeviceStream *st, const Buffer *buf) {
+	if (!st->buffers) {
+		LOGE("%s: stream=%p(fd=%d) is not active", __func__, (void*)st, st->dev_fd);
+		return -EIO;
+	}
+
 	//LOGI("%s: %d %p:", __func__, buf->buffer.index, (void*)buf);
 	if (0 != ioctl(st->dev_fd, VIDIOC_QBUF, &buf->buffer)) {
 		LOGE("Failed to ioctl(%d, VIDIOC_QBUF): %d, %s",
