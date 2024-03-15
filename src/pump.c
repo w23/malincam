@@ -1,4 +1,6 @@
 #include "pump.h"
+
+#include "v4l2-print.h"
 #include "common.h"
 
 #include <stdlib.h>

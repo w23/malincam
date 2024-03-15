@@ -1,5 +1,6 @@
 #pragma once
 
+#include "V4l2Control.h"
 #include "array.h"
 
 #include <linux/videodev2.h>
@@ -57,35 +58,6 @@ typedef struct DeviceStream {
 #define STREAM_PLANES_COUNT(st) \
 	(IS_STREAM_MPLANE(st) ? (st)->format.fmt.pix_mp.num_planes : 1)
 
-typedef struct V4l2Control {
-	struct v4l2_query_ext_ctrl query;
-	//struct v4l2_ext_control value;
-	int64_t value;
-} V4l2Control;
-
-typedef struct {
-	int fd;
-	Array controls;
-} V4l2Controls;
-
-// Enumerates controls (ext) for a given fd, device or subdevice
-// Returns Array<V4l2Control>
-V4l2Controls v4l2ControlsCreate(int fd);
-void v4l2ControlsDestroy(V4l2Controls *controls);
-
-// Returns:
-// - -ENOENT on no such control
-// - -ERANGE on value outside of range
-// - -EPERM on unsupported ctrl type
-// - other values on ioctl() errors
-// - 0 on success
-int v4l2ControlSetById(V4l2Controls *ctrls, uint32_t ctrl_id, int64_t value);
-int v4l2ControlSet(V4l2Controls *ctrls, V4l2Control *ctrl, int64_t value);
-
-// NULL if not found
-V4l2Control *v4l2ControlGet(V4l2Controls *ctrls, uint32_t ctrl);
-
-
 typedef struct Device {
 	int fd;
 	char *name;
@@ -128,24 +100,3 @@ int deviceStreamStop(DeviceStream *st);
 
 const Buffer *deviceStreamPullBuffer(DeviceStream *st);
 int deviceStreamPushBuffer(DeviceStream *st, const Buffer *buf);
-
-void v4l2PrintCapabilityBits(uint32_t caps);
-void v4l2PrintBufferCapabilityBits(uint32_t caps);
-void v4l2PrintCapability(const struct v4l2_capability* caps);
-const char *v4l2InputTypeName(uint32_t type);
-void v4l2PrintInput(const struct v4l2_input* input);
-const char *v4l2BufTypeName(uint32_t type);
-void v4l2PrintFormatDesc(const struct v4l2_fmtdesc* fmt);
-void v4l2PrintFormat(const struct v4l2_format* fmt);
-void v4l2PrintRequestBuffers(const struct v4l2_requestbuffers* req);
-const char *v4l2MemoryTypeName(enum v4l2_memory type);
-void v4l2PrintBuffer(const struct v4l2_buffer *buf);
-void v4l2PrintFormatFlags(uint32_t flags);
-const char *v4l2PixFmtName(uint32_t fmt);
-void v4l2PrintFrmSizeEnum(const struct v4l2_frmsizeenum *fse);
-const char *v4l2MbusFmtName(uint32_t format);
-void v4l2PrintSelection(const struct v4l2_selection* sel);
-const char* v4l2SelTgtName(uint32_t target);
-const char* v4l2CtrlIdName(uint32_t ctrl_id);
-const char* v4l2CtrlTypeName(uint32_t ctrl_type);
-void v4l2PrintControlFlags(uint32_t flags);

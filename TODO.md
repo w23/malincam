@@ -19,7 +19,7 @@
     - [x] open v4l
     - [x] feed it
 - [ ] configurable debug messages
-- [ ] graceful stream on/off
+- [x] graceful stream on/off
 - [ ] controls
 - [ ] sensor flipping and format
 - [ ] expand to h=992 instead of cropping to 976

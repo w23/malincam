@@ -1,7 +1,9 @@
-#include "device.h"
-#include "subdev.h"
+#include "v4l2-print.h"
 
 #include "common.h"
+
+#define IS_BUF_TYPE_MPLANE(type) \
+	(((type) == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)||((type) == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
 
 #define MCAM_V4L2_CAPS(X) \
 	X(V4L2_CAP_VIDEO_CAPTURE) \
@@ -536,7 +538,7 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 
 	switch (buf->memory) {
 		case V4L2_MEMORY_MMAP:
-			if (IS_TYPE_MPLANE(buf->type)) {
+			if (IS_BUF_TYPE_MPLANE(buf->type)) {
 				if (buf->m.planes) {
 					for (int i = 0; i < (int)buf->length; ++i) {
 						LOGI("  buf.m.planes[%d].bytesused = %d", i, buf->m.planes[i].bytesused);
@@ -552,7 +554,7 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 			}
 			break;
 		case V4L2_MEMORY_USERPTR:
-			if (IS_TYPE_MPLANE(buf->type)) {
+			if (IS_BUF_TYPE_MPLANE(buf->type)) {
 				if (buf->m.planes) {
 					for (int i = 0; i < (int)buf->length; ++i) {
 						LOGI("  buf.m.planes[%d].bytesused = %d", i, buf->m.planes[i].bytesused);
@@ -569,7 +571,7 @@ void v4l2PrintBuffer(const struct v4l2_buffer *buf) {
 			break;
 
 		case V4L2_MEMORY_DMABUF:
-			if (IS_TYPE_MPLANE(buf->type)) {
+			if (IS_BUF_TYPE_MPLANE(buf->type)) {
 				if (buf->m.planes) {
 					for (int i = 0; i < (int)buf->length; ++i) {
 						LOGI("  buf.m.planes[%d].bytesused = %d", i, buf->m.planes[i].bytesused);

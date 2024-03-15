@@ -34,6 +34,7 @@ SOURCES += \
 	src/Node.c \
 	src/Pilatform.c \
 	src/UVC.c \
+	src/V4l2Control.c \
 	src/device.c \
 	src/main.c \
 	src/pollinator.c \
