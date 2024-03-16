@@ -179,19 +179,43 @@ static const char *usbUvcControlName(int interface, int entity_id, int control_s
 	}
 }
 
+typedef union {
+	uint32_t tag;
+	struct {
+		uint32_t interface : 8;
+		uint32_t entity_id : 8;
+		uint32_t control_selector : 8;
+		uint32_t unused_ : 8;
+	} c;
+} UsbDispatch;
+
+#define MAKE_DISPATCH(interface_, entity, control) \
+	{ \
+		.c = { \
+			.interface = interface_, \
+			.entity_id = entity, \
+			.control_selector = control, \
+			.unused_ = 0, \
+		}, \
+	}
+
+static UsbDispatch makeDispatch(u8 interface, u8 entity, u8 control_selector) {
+	return (UsbDispatch)MAKE_DISPATCH(interface, entity, control_selector);
+}
+
 typedef struct {
-	int interface;
-	int entity_id;
-	int control_selector;
+	UsbDispatch dispatch;
 	const struct usb_ctrlrequest *req;
 	struct uvc_request_data *response;
 } UsbUvcControlDispatchArgs;
 
-UsbUvcControlDispatchArgs usbUvcControlDispatchArgs(const struct usb_ctrlrequest *req, struct uvc_request_data *response) {
+static UsbUvcControlDispatchArgs usbUvcControlDispatchArgs(const struct usb_ctrlrequest *req, struct uvc_request_data *response) {
 	return (UsbUvcControlDispatchArgs){
-		.interface = req->wIndex & 0xff,
-		.entity_id = req->wIndex >> 8,
-		.control_selector = req->wValue >> 8,
+		.dispatch = makeDispatch(
+			 /* interface = */ req->wIndex & 0xff,
+			 /* entity_id = */ req->wIndex >> 8,
+			 /* control_s = */ req->wValue >> 8
+		),
 		.req = req,
 		.response = response,
 	};
@@ -203,7 +227,7 @@ struct UvcGadget;
 typedef int (UsbUvcControlHandleFunc)(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args);
 
 typedef struct {
-	int control_selector;
+	UsbDispatch dispatch;
 
 	// UVC_GET_INFO response
 	// TODO dynamic state bits
@@ -215,6 +239,7 @@ typedef struct {
 	UsbUvcControlHandleFunc *handle;
 /* TODO?
 	UsbUvcControlHandleFunc *set_cur;
+
 	UsbUvcControlHandleFunc *get_cur;
 	UsbUvcControlHandleFunc *get_min;
 	UsbUvcControlHandleFunc *get_max;
@@ -223,70 +248,25 @@ typedef struct {
 */
 } UsbUvcControl;
 
-typedef struct {
-	int entity_id;
 
-	int controls_count;
+typedef struct {
 	const UsbUvcControl *controls;
-} UsbUvcEntity;
-
-typedef struct {
-	int interface;
-
-	int entities_count;
-	const UsbUvcEntity *entities;
-} UsbUvcInterface;
-
-typedef struct {
-	const UsbUvcInterface *interfaces;
-	int interfaces_count;
+	int controls_count;
 } UsbUvcDispatch;
 
-static const UsbUvcInterface *usbUvcDispatchFindInterface(const UsbUvcDispatch *dispatch, int interface) {
-	for (int i = 0; i < dispatch->interfaces_count; ++i) {
-		const UsbUvcInterface *const intf = dispatch->interfaces + i;
-		if (intf->interface == interface)
-			return intf;
-	}
-
-	return NULL;
-}
-
-static const UsbUvcEntity *usbUvcDispatchFindEntity(const UsbUvcInterface *intf, int entity_id) {
-	for (int j = 0; j < intf->entities_count; ++j) {
-		const UsbUvcEntity *const ent = intf->entities + j;
-		if (ent->entity_id == entity_id)
-			return ent;
-	}
-
-	return NULL;
-}
-
-static const UsbUvcControl *usbUvcDispatchFindControl(const UsbUvcEntity *ent, int control_selector) {
-	for (int k = 0; k < ent->controls_count; ++k) {
-		const UsbUvcControl *const ctrl = ent->controls + k;
-		if (ctrl->control_selector == control_selector)
+static const UsbUvcControl *usbUvcDispatchFindControlByTag(const UsbUvcDispatch *dispatch, uint32_t dispatch_tag) {
+	for (int i = 0; i < dispatch->controls_count; ++i) {
+		const UsbUvcControl *const ctrl = dispatch->controls + i;
+		if (ctrl->dispatch.tag == dispatch_tag)
 			return ctrl;
 	}
-
 	return NULL;
 }
 
-#define USB_UVC_DISPATCH_NO_INTERFACE -1
-#define USB_UVC_DISPATCH_NO_ENTITY -2
-#define USB_UVC_DISPATCH_NO_CONTROL -3
+#define USB_UVC_DISPATCH_NO_CONTROL -1
 // Values >= 0 are UVC_REQ_ERROR_*
 static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
-
-	const UsbUvcInterface *const intf = usbUvcDispatchFindInterface(dispatch, args.interface);
-	if (!intf)
-		return USB_UVC_DISPATCH_NO_INTERFACE;
-
-	const UsbUvcEntity *const ent = usbUvcDispatchFindEntity(intf, args.entity_id);
-	if (!ent)
-		return USB_UVC_DISPATCH_NO_ENTITY;
-
-	const UsbUvcControl *const ctrl = usbUvcDispatchFindControl(ent, args.control_selector);
+	const UsbUvcControl *const ctrl = usbUvcDispatchFindControlByTag(dispatch, args.dispatch.tag);
 	if (!ctrl)
 		return USB_UVC_DISPATCH_NO_CONTROL;
 
@@ -305,7 +285,7 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 		case UVC_SET_CUR:
 			if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_SET)) {
 				LOGE("%s: interface=%d entity=%d control=%d doesn't support SET requests",
-					__func__, args.interface, args.entity_id, args.control_selector);
+					__func__, args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector);
 				return UVC_REQ_ERROR_INVALID_REQUEST;
 			}
 			return ctrl->handle(uvc, args);
@@ -317,14 +297,14 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 		case UVC_GET_RES:
 			if (0 == (ctrl->info_caps & UVC_CONTROL_CAP_GET)) {
 				LOGE("%s: interface=%d entity=%d control=%d doesn't support GET requests",
-					__func__, args.interface, args.entity_id, args.control_selector);
+					__func__, args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector);
 				return UVC_REQ_ERROR_INVALID_REQUEST;
 			}
 			return ctrl->handle(uvc, args);
 
 		default:
 			LOGE("%s: interface=%d entity=%d control=%d invalid request=%d",
-				__func__, args.interface, args.entity_id, args.control_selector,
+				__func__, args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector,
 				args.req->bRequest);
 			return UVC_REQ_ERROR_INVALID_REQUEST;
 	}
@@ -449,7 +429,7 @@ typedef struct UvcGadget {
 	Array controls;
 
 	struct {
-		UsbUvcDispatch dispatch;
+		// TODO UsbUvcDispatch dispatch;
 
 		// Last request error code as per 4.2.1.2 of UVC 1.5 spec
 		// VC_REQUEST_ERROR_CODE_CONTROL
@@ -473,23 +453,6 @@ static int uvcHandleVcInterfaceErrorCodeControl(UvcGadget *uvc, UsbUvcControlDis
 	return UVC_REQ_ERROR_INVALID_REQUEST;
 }
 
-static const UsbUvcControl uvc_vc_interface_controls[] = {
-	{
-		.control_selector = UVC_VC_REQUEST_ERROR_CODE_CONTROL,
-		.info_caps = UVC_CONTROL_CAP_GET,
-		.len = 1,
-		.handle = uvcHandleVcInterfaceErrorCodeControl,
-	},
-};
-
-static const UsbUvcEntity uvc_vc_entities[] = {
-	{
-		.entity_id = UVC_VC_ENT_INTERFACE,
-		.controls = uvc_vc_interface_controls,
-		.controls_count = COUNTOF(uvc_vc_interface_controls),
-	},
-};
-
 static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
 	UNUSED(uvc);
 
@@ -497,8 +460,8 @@ static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlD
 
 	switch (args.req->bRequest) {
 		case UVC_SET_CUR:
-			LOGE("%s: UVC_SET_CUR not implemented (cs=%d)", __func__, args.control_selector);
-			uvc->usb.control_selector = args.control_selector;
+			LOGE("%s: UVC_SET_CUR not implemented (cs=%d)", __func__, args.dispatch.c.control_selector);
+			uvc->usb.control_selector = args.dispatch.c.control_selector;
 			args.response->length = sizeof(struct uvc_streaming_control);
 			break;
 
@@ -544,45 +507,30 @@ static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlD
 	return 0;
 }
 
-static const UsbUvcControl uvc_vs_interface_controls[] = {
+static const UsbUvcControl default_dispatch_table[] = {
 	{
-		.control_selector = UVC_VS_PROBE_CONTROL,
+		.dispatch = MAKE_DISPATCH(UVC_INTF_VIDEO_CONTROL, UVC_VC_ENT_INTERFACE, UVC_VC_REQUEST_ERROR_CODE_CONTROL),
+		.info_caps = UVC_CONTROL_CAP_GET,
+		.len = 1,
+		.handle = uvcHandleVcInterfaceErrorCodeControl,
+	},
+	{
+		.dispatch = MAKE_DISPATCH(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_PROBE_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET,
 		.len = sizeof(struct uvc_streaming_control),
 		.handle = uvcHandleVsInterfaceProbeCommitControl,
 	},
 	{
-		.control_selector = UVC_VS_COMMIT_CONTROL,
+		.dispatch = MAKE_DISPATCH(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_COMMIT_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET,
 		.len = sizeof(struct uvc_streaming_control),
 		.handle = uvcHandleVsInterfaceProbeCommitControl,
 	},
 };
 
-static const UsbUvcEntity uvc_vs_entities[] = {
-	{
-		.entity_id = UVC_VS_ENT_INTERFACE,
-		.controls = uvc_vs_interface_controls,
-		.controls_count = COUNTOF(uvc_vs_interface_controls),
-	},
-};
-
-static const UsbUvcInterface uvc_interfaces[] = {
-	{
-		.interface = UVC_INTF_VIDEO_CONTROL,
-		.entities = uvc_vc_entities,
-		.entities_count = COUNTOF(uvc_vc_entities),
-	},
-	{
-		.interface = UVC_INTF_VIDEO_STREAMING,
-		.entities = uvc_vs_entities,
-		.entities_count = COUNTOF(uvc_vs_entities),
-	},
-};
-
-static const UsbUvcDispatch uvc_dispatch = {
-	.interfaces = uvc_interfaces,
-	.interfaces_count = COUNTOF(uvc_interfaces),
+static const UsbUvcDispatch default_dispatch = {
+	.controls = default_dispatch_table,
+	.controls_count = COUNTOF(default_dispatch_table),
 };
 
 static void uvcDtor(Node *node) {
@@ -654,7 +602,7 @@ struct Node *uvcOpen(UvcOpenArgs args) {
 	gadget->event_streamon = args.event_streamon;
 
 	gadget->gadget = dev;
-	gadget->usb.dispatch = uvc_dispatch;
+	// TODO construct from controls gadget->usb.dispatch = uvc_dispatch;
 
 	return &gadget->node;
 
@@ -681,30 +629,18 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) 
 	const UsbUvcControlDispatchArgs args = usbUvcControlDispatchArgs(req, &response);
 
 	LOGI("%s: interface=%s(%d) entity=%s(%d) control=%s(%d)", __func__,
-		usbUvcIntefaceName(args.interface), args.interface,
-		usbUvcEntityName(args.interface, args.entity_id), args.entity_id,
-		usbUvcControlName(args.interface, args.entity_id, args.control_selector), args.control_selector);
+		usbUvcIntefaceName(args.dispatch.c.interface), args.dispatch.c.interface,
+		usbUvcEntityName(args.dispatch.c.interface, args.dispatch.c.entity_id), args.dispatch.c.entity_id,
+		usbUvcControlName(args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector), args.dispatch.c.control_selector);
 
-	const int result = usbUvcDispatchRequest(&uvc->usb.dispatch, uvc, args);
+	// TODO controls dispatch const int result = usbUvcDispatchRequest(&uvc->usb.dispatch, uvc, args);
+	const int result = usbUvcDispatchRequest(&default_dispatch, uvc, args);
 	switch (result) {
-		case USB_UVC_DISPATCH_NO_INTERFACE:
-			LOGE("%s: interface=%s(%d) not found", __func__,
-				usbUvcIntefaceName(args.interface), args.interface);
-			uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
-			response.length = -1; // STALL
-			break;
-		case USB_UVC_DISPATCH_NO_ENTITY:
-			LOGE("%s: interface=%s(%d) entity=%s(%d) not found", __func__,
-				usbUvcIntefaceName(args.interface), args.interface,
-				usbUvcEntityName(args.interface, args.entity_id), args.entity_id);
-			uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
-			response.length = -1; // STALL
-			break;
 		case USB_UVC_DISPATCH_NO_CONTROL:
 			LOGE("%s: interface=%s(%d) entity=%s(%d) control=%s(%d) not found", __func__,
-				usbUvcIntefaceName(args.interface), args.interface,
-				usbUvcEntityName(args.interface, args.entity_id), args.entity_id,
-				usbUvcControlName(args.interface, args.entity_id, args.control_selector), args.control_selector);
+				usbUvcIntefaceName(args.dispatch.c.interface), args.dispatch.c.interface,
+				usbUvcEntityName(args.dispatch.c.interface, args.dispatch.c.entity_id), args.dispatch.c.entity_id,
+				usbUvcControlName(args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector), args.dispatch.c.control_selector);
 			uvc->usb.bRequestErrorCode = UVC_REQ_ERROR_INVALID_REQUEST;
 			response.length = -1; // STALL
 			break;
@@ -712,9 +648,9 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) 
 			uvc->usb.bRequestErrorCode = result;
 			if (result != UVC_REQ_ERROR_NO_ERROR) {
 				LOGE("%s: interface=%s(%d) entity=%s(%d) control=%s(%d) processing request error=%02x", __func__,
-					usbUvcIntefaceName(args.interface), args.interface,
-					usbUvcEntityName(args.interface, args.entity_id), args.entity_id,
-					usbUvcControlName(args.interface, args.entity_id, args.control_selector), args.control_selector,
+					usbUvcIntefaceName(args.dispatch.c.interface), args.dispatch.c.interface,
+					usbUvcEntityName(args.dispatch.c.interface, args.dispatch.c.entity_id), args.dispatch.c.entity_id,
+					usbUvcControlName(args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector), args.dispatch.c.control_selector,
 					result);
 				response.length = -1; // STALL
 			}
