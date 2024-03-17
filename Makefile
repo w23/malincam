@@ -36,6 +36,7 @@ SOURCES += \
 	src/UVC.c \
 	src/V4l2Control.c \
 	src/device.c \
+	src/Led.c \
 	src/main.c \
 	src/pollinator.c \
 	src/pump.c \

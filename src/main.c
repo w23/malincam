@@ -2,6 +2,7 @@
 #include "array.h"
 
 #include "common.h"
+#include "Led.h"
 #include "Node.h"
 #include "Pilatform.h"
 #include "pollinator.h"
@@ -278,11 +279,14 @@ int pipelineStart(void) {
 		.arg1 = (uintptr_t)&p->fd_bits,
 		.arg2 = ENC_TO_UVC_BIT | UVC_EVENTS_BIT});
 
+	ledBlinkEnable(1);
 	return 0;
 }
 
 int pipelineStop(void) {
 	Pipeline *const p = &g_pipeline;
+
+	ledBlinkEnable(0);
 
 	nodeStop(g_pipeline.uvc);
 	nodeStop(g_pipeline.enc);
@@ -328,11 +332,13 @@ static int pipelineProcess(void) {
 
 	const uint64_t poll_pre = nowUs();
 	const int result = pollinatorPoll(g_pipeline.pol, 5000);
-	const uint64_t poll_after = nowUs();
+	const uint64_t now_us = nowUs();
 	if (!g_pipeline.fd_bits) {
-		LOGI("Slept for %.3fms", (poll_after - poll_pre) / 1000.);
+		LOGI("Slept for %.3fms", (now_us - poll_pre) / 1000.);
 		//g_pipeline.fd_bits = 0xff;
 	}
+
+	ledBlinkUpdate(now_us / 1000);
 
 	if (result < 0) {
 		LOGE("Pollinator returned %d", result);
