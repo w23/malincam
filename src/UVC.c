@@ -187,9 +187,9 @@ typedef union {
 		uint32_t control_selector : 8;
 		uint32_t unused_ : 8;
 	} c;
-} UsbDispatch;
+} UsbDispatchTag;
 
-#define MAKE_DISPATCH(interface_, entity, control) \
+#define MAKE_DISPATCH_TAG(interface_, entity, control) \
 	{ \
 		.c = { \
 			.interface = interface_, \
@@ -199,19 +199,19 @@ typedef union {
 		}, \
 	}
 
-static UsbDispatch makeDispatch(u8 interface, u8 entity, u8 control_selector) {
-	return (UsbDispatch)MAKE_DISPATCH(interface, entity, control_selector);
+static UsbDispatchTag makeDispatchTag(u8 interface, u8 entity, u8 control_selector) {
+	return (UsbDispatchTag)MAKE_DISPATCH_TAG(interface, entity, control_selector);
 }
 
 typedef struct {
-	UsbDispatch dispatch;
+	UsbDispatchTag dispatch;
 	const struct usb_ctrlrequest *req;
 	struct uvc_request_data *response;
 } UsbUvcControlDispatchArgs;
 
 static UsbUvcControlDispatchArgs usbUvcControlDispatchArgs(const struct usb_ctrlrequest *req, struct uvc_request_data *response) {
 	return (UsbUvcControlDispatchArgs){
-		.dispatch = makeDispatch(
+		.dispatch = makeDispatchTag(
 			 /* interface = */ req->wIndex & 0xff,
 			 /* entity_id = */ req->wIndex >> 8,
 			 /* control_s = */ req->wValue >> 8
@@ -227,7 +227,7 @@ struct UvcGadget;
 typedef int (UsbUvcControlHandleFunc)(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args);
 
 typedef struct {
-	UsbDispatch dispatch;
+	UsbDispatchTag dispatch;
 
 	// UVC_GET_INFO response
 	// TODO dynamic state bits
@@ -400,19 +400,19 @@ static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlD
 
 static const UsbUvcControl default_dispatch_table[] = {
 	{
-		.dispatch = MAKE_DISPATCH(UVC_INTF_VIDEO_CONTROL, UVC_VC_ENT_INTERFACE, UVC_VC_REQUEST_ERROR_CODE_CONTROL),
+		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_CONTROL, UVC_VC_ENT_INTERFACE, UVC_VC_REQUEST_ERROR_CODE_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET,
 		.len = 1,
 		.handle = uvcHandleVcInterfaceErrorCodeControl,
 	},
 	{
-		.dispatch = MAKE_DISPATCH(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_PROBE_CONTROL),
+		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_PROBE_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET,
 		.len = sizeof(struct uvc_streaming_control),
 		.handle = uvcHandleVsInterfaceProbeCommitControl,
 	},
 	{
-		.dispatch = MAKE_DISPATCH(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_COMMIT_CONTROL),
+		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_COMMIT_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET,
 		.len = sizeof(struct uvc_streaming_control),
 		.handle = uvcHandleVsInterfaceProbeCommitControl,
