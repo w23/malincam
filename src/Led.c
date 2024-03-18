@@ -6,7 +6,7 @@
 #include <unistd.h> // close, write
 
 #define LED_SYS_BRIGHTNESS "/sys/class/leds/ACT/brightness"
-#define LED_BLINK_PERIOD_MS 1000
+#define LED_BLINK_PERIOD_MS 500
 
 static const char g_led_on[] = "255";
 static const char g_led_off[] = "0";
