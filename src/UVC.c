@@ -351,7 +351,8 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 			}
 
 			uvc->usb.data_phase_control = ctrl;
-			args.response->length = 0;
+			args.response->length = ctrl->len;
+			memset(args.response->data, 0, ctrl->len);
 			return 0;
 
 		case UVC_GET_CUR:
@@ -696,6 +697,7 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) 
 
 	// Setup packet *always* needs a data out phase
 	// FIXME does it? Even on UVC_SET_CUR?
+	LOGI("%s: sending response length=%d", __func__, response.length);
 	if (0 != ioctl(uvc->gadget->fd, UVCIOC_SEND_RESPONSE, &response)) {
 		const int err = errno;
 		LOGE("%s: failed to UVCIOIC_SEND_RESPONSE: %d: %s", __func__, err, strerror(err));
