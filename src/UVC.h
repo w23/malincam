@@ -27,7 +27,12 @@ typedef struct {
 
 	// Array of const V4l2Controls*
 	// Moved out
-	Array *controls;
+	//Array *controls;
+
+	// TODO more flexible
+	struct {
+		V4l2Control *brightness;
+	} controls;
 
 	uvc_event_streamon_f *event_streamon;
 

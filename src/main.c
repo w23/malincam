@@ -180,6 +180,7 @@ static int pipelineCreate(void) {
 	Node *const uvc = uvcOpen((UvcOpenArgs){
 		.dev_name = "/dev/video2",
 		.event_streamon = uvcEventStreamon,
+		// TODO .controls.brightness = 
 	});
 	if (!uvc) {
 		LOGE("Unable to open uvc-gadget device");

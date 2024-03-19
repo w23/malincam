@@ -179,6 +179,38 @@ static const char *usbUvcControlName(int interface, int entity_id, int control_s
 	}
 }
 
+static void usbPrintSetupPacket(const char *prefix, const struct usb_ctrlrequest *req) {
+	const char transfer_direction = (req->bRequestType & USB_DIR_IN) ? '>' : '<';
+
+	char type = '?';
+	switch (req->bRequestType & USB_TYPE_MASK) {
+		case USB_TYPE_STANDARD: type = 'S'; break;
+		case USB_TYPE_CLASS: type = 'C'; break;
+		case USB_TYPE_VENDOR: type = 'V'; break;
+	}
+
+	char recipient = '?';
+	switch (req->bRequestType & USB_RECIP_MASK) {
+		case USB_RECIP_DEVICE: recipient = 'D'; break;
+		case USB_RECIP_INTERFACE: recipient = 'I'; break;
+		case USB_RECIP_ENDPOINT: recipient = 'E'; break;
+		case USB_RECIP_OTHER: recipient = 'O'; break;
+		case USB_RECIP_PORT: recipient = 'P'; break;
+		case USB_RECIP_RPIPE: recipient = 'R'; break;
+	}
+
+	const int if_or_endpoint = req->wIndex & 0xff;
+	const int entity_id = req->wIndex >> 8;
+
+	LOGI("%sbRequestType=%c%c%c(%02x) bRequest=%s(%02x) wIndex=[ent=%d if=%d](%04x) wValue=%04x wLength=%d",
+		prefix,
+		transfer_direction, type, recipient, req->bRequestType,
+		requestName(req->bRequest), req->bRequest,
+		entity_id, if_or_endpoint, req->wIndex,
+		req->wValue,
+		req->wLength);
+}
+
 typedef union {
 	uint32_t tag;
 	struct {
@@ -222,30 +254,29 @@ static UsbUvcControlDispatchArgs usbUvcControlDispatchArgs(const struct usb_ctrl
 }
 
 struct UvcGadget;
+struct UsbUvcControl;
 
 // Returns UVC_REQ_*
-typedef int (UsbUvcControlHandleFunc)(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args);
+typedef int (UsbUvcControlGetFunc)(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args);
 
-typedef struct {
+// Called on UVC_GET_INFO
+typedef u8 (UsbUvcControlGetInfoFunc)(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args, u8 info_default);
+
+// Called on data phase of UVC_SET_CUR
+typedef int (UsbUvcControlSetDataFunc)(struct UvcGadget *uvc, const struct UsbUvcControl *control, const struct uvc_request_data *data);
+
+typedef struct UsbUvcControl {
 	UsbDispatchTag dispatch;
 
-	// UVC_GET_INFO response
-	// TODO dynamic state bits
+	// UVC_GET_INFO default response
 	uint32_t info_caps;
 
 	// UVC_GET_LEN
 	uint16_t len;
 
-	UsbUvcControlHandleFunc *handle;
-/* TODO?
-	UsbUvcControlHandleFunc *set_cur;
-
-	UsbUvcControlHandleFunc *get_cur;
-	UsbUvcControlHandleFunc *get_min;
-	UsbUvcControlHandleFunc *get_max;
-	UsbUvcControlHandleFunc *get_res;
-	UsbUvcControlHandleFunc *get_def;
-*/
+	UsbUvcControlGetInfoFunc *get_info;
+	UsbUvcControlGetFunc *get;
+	UsbUvcControlSetDataFunc *set_data;
 } UsbUvcControl;
 
 
@@ -263,6 +294,33 @@ static const UsbUvcControl *usbUvcDispatchFindControlByTag(const UsbUvcDispatch 
 	return NULL;
 }
 
+typedef struct UvcGadget {
+	Node node;
+
+	uvc_event_streamon_f *event_streamon;
+
+	Device *gadget;
+
+	struct {
+		struct {
+			//UvcVcPuBrigtnessValue value;
+			//UvcVcPuBrigtnessMeta meta;
+			V4l2Control *v4l2;
+		} vc_pu_brightness;
+	} controls;
+
+	struct {
+		// TODO UsbUvcDispatch dispatch;
+
+		// Last request error code as per 4.2.1.2 of UVC 1.5 spec
+		// VC_REQUEST_ERROR_CODE_CONTROL
+		uint8_t bRequestErrorCode;
+
+		// Set by SET_CUR
+		const UsbUvcControl *data_phase_control;
+	} usb;
+} UvcGadget;
+
 #define USB_UVC_DISPATCH_NO_CONTROL -1
 // Values >= 0 are UVC_REQ_ERROR_*
 static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
@@ -278,8 +336,11 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 			return UVC_REQ_ERROR_NO_ERROR;
 
 		case UVC_GET_INFO:
-			args.response->data[0] = ctrl->info_caps;
-			args.response->length = 1;
+			{
+				const u8 info_caps = ctrl->get_info ? ctrl->get_info(uvc, args, ctrl->info_caps) : ctrl->info_caps;
+				args.response->data[0] = info_caps;
+				args.response->length = 1;
+			}
 			return UVC_REQ_ERROR_NO_ERROR;
 
 		case UVC_SET_CUR:
@@ -288,7 +349,10 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 					__func__, args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector);
 				return UVC_REQ_ERROR_INVALID_REQUEST;
 			}
-			return ctrl->handle(uvc, args);
+
+			uvc->usb.data_phase_control = ctrl;
+			args.response->length = 0;
+			return 0;
 
 		case UVC_GET_CUR:
 		case UVC_GET_MIN:
@@ -300,7 +364,7 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 					__func__, args.dispatch.c.interface, args.dispatch.c.entity_id, args.dispatch.c.control_selector);
 				return UVC_REQ_ERROR_INVALID_REQUEST;
 			}
-			return ctrl->handle(uvc, args);
+			return ctrl->get(uvc, args);
 
 		default:
 			LOGE("%s: interface=%d entity=%d control=%d invalid request=%d",
@@ -309,27 +373,6 @@ static int usbUvcDispatchRequest(const UsbUvcDispatch *dispatch, struct UvcGadge
 			return UVC_REQ_ERROR_INVALID_REQUEST;
 	}
 }
-
-typedef struct UvcGadget {
-	Node node;
-
-	uvc_event_streamon_f *event_streamon;
-
-	Device *gadget;
-
-	Array controls;
-
-	struct {
-		// TODO UsbUvcDispatch dispatch;
-
-		// Last request error code as per 4.2.1.2 of UVC 1.5 spec
-		// VC_REQUEST_ERROR_CODE_CONTROL
-		uint8_t bRequestErrorCode;
-
-		// Set by VS / INTERFACE / PROBE|COMMIT / UVC_SET_CUR
-		uint32_t control_selector;
-	} usb;
-} UvcGadget;
 
 static int uvcHandleVcInterfaceErrorCodeControl(UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
 	UNUSED(uvc);
@@ -348,14 +391,9 @@ static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlD
 	UNUSED(uvc);
 
 	struct uvc_streaming_control *const stream_ctrl = (void*)&args.response->data;
+	args.response->length = sizeof(struct uvc_streaming_control);
 
 	switch (args.req->bRequest) {
-		case UVC_SET_CUR:
-			LOGE("%s: UVC_SET_CUR not implemented (cs=%d)", __func__, args.dispatch.c.control_selector);
-			uvc->usb.control_selector = args.dispatch.c.control_selector;
-			args.response->length = sizeof(struct uvc_streaming_control);
-			break;
-
 		// TODO these are not the same when there are multiple resolutions and framerates
 		case UVC_GET_CUR:
 		case UVC_GET_MIN:
@@ -385,16 +423,107 @@ static int uvcHandleVsInterfaceProbeCommitControl(UvcGadget *uvc, UsbUvcControlD
 				.bMinVersion = 1, // TODO first format
 				.bMaxVersion = 1, // TODO last format
 			};
-			args.response->length = sizeof(struct uvc_streaming_control);
 			break;
 
 		case UVC_GET_RES:
 			// TODO why?
 			memset(stream_ctrl, 0, sizeof(*stream_ctrl));
-			args.response->length = sizeof(struct uvc_streaming_control);
 			break;
 	}
 
+	return 0;
+}
+
+static int uvcVsInterfaceProbeCommit(struct UvcGadget *uvc, const struct UsbUvcControl *control, const struct uvc_request_data *data) {
+	UNUSED(uvc);
+	const struct uvc_streaming_control *const ctrl = (const void*)&data->data;
+	LOGI("%s: %s bFormatIndex=%d bFrameIndex=%d", __func__,
+		control->dispatch.c.control_selector == UVC_VS_PROBE_CONTROL ? "probe" : "commit",
+		ctrl->bFormatIndex, ctrl->bFrameIndex);
+	return 0;
+}
+
+typedef struct {
+	s16 wBrightness;
+} UvcVcPuBrigtnessValue;
+
+static u8 uvcVcPuBrightnessGetInfo(struct UvcGadget *uvc, UsbUvcControlDispatchArgs args, u8 info_default) {
+	UNUSED(args);
+	UNUSED(info_default);
+	return (uvc->controls.vc_pu_brightness.v4l2) 
+		? UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET
+		: 0;
+}
+
+static int uvcVcPuBrightnessGet(UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
+	V4l2Control *const v4l2 = uvc->controls.vc_pu_brightness.v4l2;
+	if (!v4l2)
+		return UVC_REQ_ERROR_INVALID_CONTROL;
+
+	UvcVcPuBrigtnessValue *const value = (void*)args.response->data;
+	args.response->length = sizeof(UvcVcPuBrigtnessValue);
+
+	switch (args.req->bRequest) {
+		case UVC_GET_CUR:
+			value->wBrightness = v4l2->value;
+			break;
+		case UVC_GET_MIN:
+			value->wBrightness = v4l2->query.minimum;
+			break;
+		case UVC_GET_DEF:
+			value->wBrightness = v4l2->query.default_value;
+			break;
+		case UVC_GET_MAX:
+			value->wBrightness = v4l2->query.minimum;
+			break;
+		case UVC_GET_RES:
+			value->wBrightness = 1;
+			break;
+	}
+	
+	return 0;
+}
+
+static int uvcVcPuBrightnessSet(struct UvcGadget *uvc, const struct UsbUvcControl *control, const struct uvc_request_data *data) {
+	UNUSED(control);
+
+	V4l2Control *const v4l2 = uvc->controls.vc_pu_brightness.v4l2;
+	ASSERT(v4l2);
+
+	const UvcVcPuBrigtnessValue *const value = (const void*)&data->data;
+	LOGI("%s: wBrightness=%d", __func__, value->wBrightness);
+
+	// TODO v4l2ControlSetById(
+
+	return 0;
+}
+
+// See 4.2.2.1.2 of USB UVC 1.5 spec
+#define UVC_VC_CAM_AE_MODE_MANUAL 0x01
+#define UVC_VC_CAM_AE_MODE_AUTO 0x02
+#define UVC_VC_CAM_AE_MODE_SHUTTER_PRIORITY 0x04
+#define UVC_VC_CAM_AE_MODE_APERTURE_PRIORITY 0x08
+
+typedef struct {
+	u8 bAutoExposureMode;
+} UvcVcCamAeModeValue;
+
+static int uvcHandleVcCamAeModeGet(UvcGadget *uvc, UsbUvcControlDispatchArgs args) {
+	UNUSED(uvc);
+	UvcVcCamAeModeValue *const value = (void*)args.response->data;
+	args.response->length = sizeof(UvcVcCamAeModeValue);
+
+	switch (args.req->bRequest) {
+		case UVC_GET_CUR:
+		case UVC_GET_DEF:
+		case UVC_GET_RES:
+			value->bAutoExposureMode = UVC_VC_CAM_AE_MODE_AUTO;
+			break;
+		default:
+			LOGE("%s: unexpected request=%s (%d)", __func__, requestName(args.req->bRequest), args.req->bRequest);
+			return UVC_REQ_ERROR_INVALID_REQUEST;
+	}
+	
 	return 0;
 }
 
@@ -403,19 +532,35 @@ static const UsbUvcControl default_dispatch_table[] = {
 		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_CONTROL, UVC_VC_ENT_INTERFACE, UVC_VC_REQUEST_ERROR_CODE_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET,
 		.len = 1,
-		.handle = uvcHandleVcInterfaceErrorCodeControl,
+		.get = uvcHandleVcInterfaceErrorCodeControl,
+	},
+	{
+		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_CONTROL, UVC_VC_ENT_CAMERA_TERMINAL_ID, UVC_CT_AE_MODE_CONTROL),
+		.info_caps = UVC_CONTROL_CAP_GET,
+		.len = sizeof(UvcVcCamAeModeValue),
+		.get = uvcHandleVcCamAeModeGet,
+	},
+	{
+		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_CONTROL, UVC_VC_ENT_PROCESSING_UNIT_ID, UVC_PU_BRIGHTNESS_CONTROL),
+		.info_caps = 0,
+		.get_info = uvcVcPuBrightnessGetInfo,
+		.len = sizeof(UvcVcPuBrigtnessValue),
+		.get = uvcVcPuBrightnessGet,
+		.set_data = uvcVcPuBrightnessSet,
 	},
 	{
 		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_PROBE_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET,
 		.len = sizeof(struct uvc_streaming_control),
-		.handle = uvcHandleVsInterfaceProbeCommitControl,
+		.get = uvcHandleVsInterfaceProbeCommitControl,
+		.set_data = uvcVsInterfaceProbeCommit,
 	},
 	{
 		.dispatch = MAKE_DISPATCH_TAG(UVC_INTF_VIDEO_STREAMING, UVC_VS_ENT_INTERFACE, UVC_VS_COMMIT_CONTROL),
 		.info_caps = UVC_CONTROL_CAP_GET | UVC_CONTROL_CAP_SET,
 		.len = sizeof(struct uvc_streaming_control),
-		.handle = uvcHandleVsInterfaceProbeCommitControl,
+		.get = uvcHandleVsInterfaceProbeCommitControl,
+		.set_data = uvcVsInterfaceProbeCommit,
 	},
 };
 
@@ -504,6 +649,7 @@ fail:
 
 static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) {
 	struct uvc_request_data response = {0};
+	uvc->usb.data_phase_control = NULL;
 
 	// TODO what is this magic value? STALL?
 	// grepping kernel sources says that any negative value would mean stall,
@@ -549,6 +695,7 @@ static int processEventSetup(UvcGadget *uvc, const struct usb_ctrlrequest *req) 
 	}
 
 	// Setup packet *always* needs a data out phase
+	// FIXME does it? Even on UVC_SET_CUR?
 	if (0 != ioctl(uvc->gadget->fd, UVCIOC_SEND_RESPONSE, &response)) {
 		const int err = errno;
 		LOGE("%s: failed to UVCIOIC_SEND_RESPONSE: %d: %s", __func__, err, strerror(err));
@@ -566,6 +713,7 @@ static void uvcPrepare(UvcGadget *uvc) {
 		//.buffer_memory = BUFFER_MEMORY_MMAP,
 		.buffer_memory = BUFFER_MEMORY_DMABUF_IMPORT,
 
+		// TODO real format
 		.pixelformat = V4L2_PIX_FMT_MJPEG,
 		.width = 1332,
 		.height = 976,
@@ -577,48 +725,24 @@ static void uvcPrepare(UvcGadget *uvc) {
 }
 
 static int processEventData(UvcGadget *uvc, const struct uvc_request_data *data) {
-	UNUSED(uvc);
-	UNUSED(data);
-	LOGE("%s: not implemented (length=%d), control_selector=%d", __func__, data->length, uvc->usb.control_selector);
-
-	if (uvc->usb.control_selector == UVC_VS_COMMIT_CONTROL) {
-		const struct uvc_streaming_control *const ctrl = (const void*)&data->data;
-		LOGI("%s: commit bFormatIndex=%d bFrameIndex=%d", __func__, ctrl->bFormatIndex, ctrl->bFrameIndex);
+	int retval = 0;
+	if (!uvc->usb.data_phase_control) {
+		LOGE("%s: Missing data phase control, likely unsupported UVC_SET_CUR event (length=%d)", __func__, data->length);
+		// This is not a fatal event
+		goto exit;
 	}
 
-	return 0;
-}
-
-static void usbPrintSetupPacket(const char *prefix, const struct usb_ctrlrequest *req) {
-	const char transfer_direction = (req->bRequestType & USB_DIR_IN) ? '>' : '<';
-
-	char type = '?';
-	switch (req->bRequestType & USB_TYPE_MASK) {
-		case USB_TYPE_STANDARD: type = 'S'; break;
-		case USB_TYPE_CLASS: type = 'C'; break;
-		case USB_TYPE_VENDOR: type = 'V'; break;
+	if (!uvc->usb.data_phase_control->set_data) {
+		LOGE("%s: Missing set_data() on control, likely unsupported UVC_SET_CUR event (length=%d)", __func__, data->length);
+		// This is not a fatal event
+		goto exit;
 	}
 
-	char recipient = '?';
-	switch (req->bRequestType & USB_RECIP_MASK) {
-		case USB_RECIP_DEVICE: recipient = 'D'; break;
-		case USB_RECIP_INTERFACE: recipient = 'I'; break;
-		case USB_RECIP_ENDPOINT: recipient = 'E'; break;
-		case USB_RECIP_OTHER: recipient = 'O'; break;
-		case USB_RECIP_PORT: recipient = 'P'; break;
-		case USB_RECIP_RPIPE: recipient = 'R'; break;
-	}
+	retval = uvc->usb.data_phase_control->set_data(uvc, uvc->usb.data_phase_control, data);
 
-	const int if_or_endpoint = req->wIndex & 0xff;
-	const int entity_id = req->wIndex >> 8;
-
-	LOGI("%sbRequestType=%c%c%c(%02x) bRequest=%s(%02x) wIndex=[ent=%d if=%d](%04x) wValue=%04x wLength=%d",
-		prefix,
-		transfer_direction, type, recipient, req->bRequestType,
-		requestName(req->bRequest), req->bRequest,
-		entity_id, if_or_endpoint, req->wIndex,
-		req->wValue,
-		req->wLength);
+exit:
+	uvc->usb.data_phase_control = NULL;
+	return retval;
 }
 
 static int processEvent(UvcGadget *uvc, const struct v4l2_event *event) {
